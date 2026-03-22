@@ -40,6 +40,7 @@ MAX_BOXES = 25
 
 NUM_PETALS = 25
 NUM_RAINDROPS = 0
+LIGHTNING_INTENSITY = 0   # 0 = off, 1-10 scale
 
 VISUALIZER_TYPES = ["Bar Graph", "Oscilloscope", "Radial", "Particle"]
 
@@ -153,6 +154,97 @@ def analyse_audio_waveform(audio_samples: np.ndarray, sr: int, fps: int):
     return waveforms
 
 
+def detect_beats(audio_samples: np.ndarray, sr: int, fps: int, min_gap_s: float = 5.0):
+    """Detect drum/percussive onsets and return frame indices of beats.
+
+    Returns beat frame indices spaced at least min_gap_s seconds apart,
+    prioritising the strongest onsets.
+    """
+    # onset strength focused on percussive content
+    onset_env = librosa.onset.onset_strength(y=audio_samples, sr=sr, hop_length=sr // fps)
+    # pick peaks in onset envelope
+    peaks = librosa.util.peak_pick(
+        onset_env, pre_max=3, post_max=3, pre_avg=5, post_avg=5, delta=0.3, wait=int(min_gap_s * fps)
+    )
+    if len(peaks) == 0:
+        return np.array([], dtype=int)
+    # sort by strength descending, then enforce min_gap
+    strengths = onset_env[peaks]
+    order = np.argsort(-strengths)
+    selected = []
+    for idx in order:
+        frame = peaks[idx]
+        if all(abs(frame - s) >= min_gap_s * fps for s in selected):
+            selected.append(frame)
+    selected.sort()
+    return np.array(selected, dtype=int)
+
+
+# ── lightning effect ───────────────────────────────────────────────────────
+
+def _draw_lightning_bolt(draw: ImageDraw.ImageDraw, x: int, y_start: int, y_end: int,
+                         alpha: int, branch_chance: float = 0.3):
+    """Draw a jagged lightning bolt from (x, y_start) down to y_end."""
+    segments = random.randint(6, 12)
+    step_y = (y_end - y_start) / segments
+    points = [(x, y_start)]
+    cx = x
+    for i in range(1, segments):
+        cx += random.randint(-40, 40)
+        cy = int(y_start + step_y * i)
+        points.append((cx, cy))
+    points.append((cx + random.randint(-15, 15), y_end))
+
+    # draw glow layers (thick to thin)
+    for width, a_mult in [(7, 0.2), (4, 0.4), (2, 0.8), (1, 1.0)]:
+        color = (220, 220, 255, int(alpha * a_mult))
+        for j in range(len(points) - 1):
+            draw.line([points[j], points[j + 1]], fill=color, width=width)
+
+    # draw branches
+    for i in range(1, len(points) - 1):
+        if random.random() < branch_chance:
+            bx, by = points[i]
+            branch_len = random.randint(20, 60)
+            bx_end = bx + random.choice([-1, 1]) * branch_len
+            by_end = by + random.randint(15, 40)
+            branch_color = (200, 200, 255, int(alpha * 0.5))
+            draw.line([(bx, by), (bx_end, by_end)], fill=branch_color, width=1)
+
+
+def draw_lightning(draw: ImageDraw.ImageDraw, intensity: int, frame_idx: int,
+                   beat_frames: np.ndarray, fps: int):
+    """Draw lightning bolts on beat frames. Returns flash_alpha for screen flash.
+
+    intensity: 1-10 scale controlling brightness, bolt count, and flash strength.
+    Returns flash alpha (0-255) for a whole-screen white flash overlay.
+    """
+    if intensity <= 0 or len(beat_frames) == 0:
+        return 0
+
+    # check if we're near a beat (within a few frames for flash decay)
+    flash_alpha = 0
+    flash_duration = 4  # frames of flash decay
+    for beat in beat_frames:
+        diff = frame_idx - beat
+        if 0 <= diff < flash_duration:
+            # decay over flash_duration frames
+            t = 1.0 - diff / flash_duration
+            base_alpha = int(30 + intensity * 15)  # 45-180 range
+            flash_alpha = max(flash_alpha, int(base_alpha * t))
+
+            if diff == 0:
+                # draw actual bolt(s) on the beat frame
+                num_bolts = max(1, intensity // 3)
+                for _ in range(num_bolts):
+                    bx = random.randint(int(WIDTH * 0.1), int(WIDTH * 0.9))
+                    bolt_alpha = min(255, 100 + intensity * 15)
+                    _draw_lightning_bolt(draw, bx, 0, random.randint(HEIGHT // 2, HEIGHT),
+                                        bolt_alpha, branch_chance=0.2 + intensity * 0.05)
+
+    return flash_alpha
+
+
 # ── visualizer renderers ───────────────────────────────────────────────────
 
 def _vis_rgba(rgb: tuple[int, int, int], alpha: int = VIS_ALPHA) -> tuple[int, int, int, int]:
@@ -252,10 +344,14 @@ def build_renderer(bg_image: Image.Image, bar_data: np.ndarray,
                    petals: list[Petal], visualizer: str = "Bar Graph",
                    waveforms: list | None = None, particles: list | None = None,
                    raindrops: list[Raindrop] | None = None,
-                   vis_color: tuple[int, int, int] = DEFAULT_VIS_COLOR):
+                   vis_color: tuple[int, int, int] = DEFAULT_VIS_COLOR,
+                   lightning_intensity: int = 0,
+                   beat_frames: np.ndarray | None = None):
     """Return a function(t) -> numpy frame for VideoClip."""
 
     bg = bg_image.convert("RGBA").resize((WIDTH, HEIGHT), Image.LANCZOS)
+    if beat_frames is None:
+        beat_frames = np.array([], dtype=int)
 
     def make_frame(t: float) -> np.ndarray:
         frame_idx = int(t * FPS)
@@ -297,7 +393,19 @@ def build_renderer(bg_image: Image.Image, bar_data: np.ndarray,
                 r.update(dt)
                 r.draw(draw)
 
+        # draw lightning
+        flash_alpha = 0
+        if lightning_intensity > 0:
+            flash_alpha = draw_lightning(draw, lightning_intensity, frame_idx,
+                                         beat_frames, FPS)
+
         img = Image.alpha_composite(img, overlay)
+
+        # apply screen flash for lightning
+        if flash_alpha > 0:
+            flash = Image.new("RGBA", (WIDTH, HEIGHT), (255, 255, 255, flash_alpha))
+            img = Image.alpha_composite(img, flash)
+
         return np.array(img.convert("RGB"))
 
     return make_frame
@@ -312,6 +420,7 @@ def render_video(
     bar_count: int = BAR_COUNT,
     petal_count: int = NUM_PETALS,
     raindrop_count: int = NUM_RAINDROPS,
+    lightning_intensity: int = LIGHTNING_INTENSITY,
     duration: float | None = None,
     visualizer: str = "Bar Graph",
     vis_color: tuple[int, int, int] = DEFAULT_VIS_COLOR,
@@ -346,7 +455,12 @@ def render_video(
 
     raindrops = [Raindrop() for _ in range(raindrop_count)] if raindrop_count > 0 else None
 
-    make_frame = build_renderer(bg, bar_data, petals, visualizer, waveforms, particles, raindrops, vis_color)
+    beat_frames = None
+    if lightning_intensity > 0:
+        beat_frames = detect_beats(y_samples, sr, FPS, min_gap_s=5.0)
+
+    make_frame = build_renderer(bg, bar_data, petals, visualizer, waveforms, particles,
+                                raindrops, vis_color, lightning_intensity, beat_frames)
 
     clip = VideoClip(make_frame, duration=dur).with_fps(FPS)
     audio_clip = AudioFileClip(audio_path)
@@ -399,6 +513,8 @@ def main():
     parser.add_argument("--bars", type=int, default=BAR_COUNT)
     parser.add_argument("--petals", type=int, default=NUM_PETALS)
     parser.add_argument("--raindrops", type=int, default=NUM_RAINDROPS)
+    parser.add_argument("--lightning", type=int, default=LIGHTNING_INTENSITY,
+                        help="Lightning intensity 0-10 (0=off)")
     parser.add_argument("--duration", type=float, default=None)
     parser.add_argument("--visualizer", choices=VISUALIZER_TYPES, default="Bar Graph")
     args = parser.parse_args()
@@ -414,6 +530,7 @@ def main():
         bar_count=args.bars,
         petal_count=args.petals,
         raindrop_count=args.raindrops,
+        lightning_intensity=args.lightning,
         duration=args.duration,
         visualizer=args.visualizer,
     )

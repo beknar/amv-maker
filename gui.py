@@ -23,7 +23,7 @@ class AMVMakerApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("AMV Maker")
-        self.geometry("720x920")
+        self.geometry("720x950")
         self.resizable(False, False)
         self.configure(bg="#1a1a2e")
 
@@ -35,6 +35,7 @@ class AMVMakerApp(tk.Tk):
         self._bar_count = tk.IntVar(value=40)
         self._petal_count = tk.IntVar(value=25)
         self._raindrop_count = tk.IntVar(value=0)
+        self._lightning_intensity = tk.IntVar(value=0)
         self._vis_color: tuple[int, int, int] = (200, 80, 200)
         self._duration = tk.StringVar(value="")
         self._status = tk.StringVar(value="Ready")
@@ -100,16 +101,21 @@ class AMVMakerApp(tk.Tk):
             row=3, column=1, sticky=tk.W, padx=5)
         ttk.Label(cfg, text="(0 = off)").grid(row=3, column=2, sticky=tk.W)
 
-        ttk.Label(cfg, text="Duration (s):").grid(row=4, column=0, sticky=tk.W, pady=2)
-        ttk.Entry(cfg, textvariable=self._duration, width=10).grid(
+        ttk.Label(cfg, text="Lightning:").grid(row=4, column=0, sticky=tk.W, pady=2)
+        ttk.Spinbox(cfg, from_=0, to=10, textvariable=self._lightning_intensity, width=8).grid(
             row=4, column=1, sticky=tk.W, padx=5)
-        ttk.Label(cfg, text="(blank = full track)").grid(row=4, column=2, sticky=tk.W)
+        ttk.Label(cfg, text="(0 = off, 1-10)").grid(row=4, column=2, sticky=tk.W)
 
-        ttk.Label(cfg, text="Output:").grid(row=5, column=0, sticky=tk.W, pady=2)
+        ttk.Label(cfg, text="Duration (s):").grid(row=5, column=0, sticky=tk.W, pady=2)
+        ttk.Entry(cfg, textvariable=self._duration, width=10).grid(
+            row=5, column=1, sticky=tk.W, padx=5)
+        ttk.Label(cfg, text="(blank = full track)").grid(row=5, column=2, sticky=tk.W)
+
+        ttk.Label(cfg, text="Output:").grid(row=6, column=0, sticky=tk.W, pady=2)
         ttk.Entry(cfg, textvariable=self._output_path, width=45).grid(
-            row=5, column=1, columnspan=2, sticky=tk.W, padx=5)
+            row=6, column=1, columnspan=2, sticky=tk.W, padx=5)
         ttk.Button(cfg, text="Browse…", command=self._browse_output).grid(
-            row=5, column=3, padx=5)
+            row=6, column=3, padx=5)
 
         # ── render ──
         ren = tk.Frame(self, bg="#1a1a2e")
@@ -220,6 +226,7 @@ class AMVMakerApp(tk.Tk):
             bar_count=self._bar_count.get(),
             petal_count=self._petal_count.get(),
             raindrop_count=self._raindrop_count.get(),
+            lightning_intensity=self._lightning_intensity.get(),
             duration=duration,
             visualizer=self._visualizer.get(),
             vis_color=self._vis_color,
