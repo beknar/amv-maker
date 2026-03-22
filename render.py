@@ -33,7 +33,8 @@ BAR_COUNT = 40
 BAR_BOX_H = 10
 BAR_GAP = 4             # horizontal gap between bar columns
 BOX_VGAP = 3            # vertical gap between stacked boxes
-BAR_COLOR = (200, 80, 200, 180)
+DEFAULT_VIS_COLOR = (200, 80, 200)  # RGB — alpha is always applied separately
+VIS_ALPHA = 180
 VIS_BOTTOM_Y = HEIGHT - 40
 MAX_BOXES = 25
 
@@ -88,11 +89,11 @@ class Raindrop:
     def reset(self, initial: bool = False):
         self.x = random.uniform(0, WIDTH)
         self.y = random.uniform(-HEIGHT, 0) if not initial else random.uniform(0, HEIGHT)
-        self.length = random.uniform(10, 30)
+        self.length = random.uniform(18, 50)
         self.speed = random.uniform(400, 800)
         self.drift = random.uniform(-10, 10)
-        self.alpha = random.randint(80, 180)
-        self.width = random.choice([1, 1, 1, 2])
+        self.alpha = random.randint(140, 230)
+        self.width = random.choice([1, 2, 2, 3])
 
     def update(self, dt: float):
         self.y += self.speed * dt
@@ -154,21 +155,29 @@ def analyse_audio_waveform(audio_samples: np.ndarray, sr: int, fps: int):
 
 # ── visualizer renderers ───────────────────────────────────────────────────
 
-def draw_bar_visualizer(draw: ImageDraw.ImageDraw, amplitudes: np.ndarray):
+def _vis_rgba(rgb: tuple[int, int, int], alpha: int = VIS_ALPHA) -> tuple[int, int, int, int]:
+    """Combine an RGB color with an alpha value."""
+    return (rgb[0], rgb[1], rgb[2], alpha)
+
+
+def draw_bar_visualizer(draw: ImageDraw.ImageDraw, amplitudes: np.ndarray,
+                        color: tuple[int, int, int] = DEFAULT_VIS_COLOR):
     """Stacked semi-transparent bar graph made of individual boxes."""
+    fill = _vis_rgba(color)
     total_bar_width = WIDTH // max(1, len(amplitudes))
     box_w = max(1, total_bar_width - BAR_GAP)
-    box_step = BAR_BOX_H + BOX_VGAP  # total height per box including gap
+    box_step = BAR_BOX_H + BOX_VGAP
     for i, amp in enumerate(amplitudes):
         num_boxes = int(amp * MAX_BOXES)
         x0 = i * total_bar_width
         for j in range(num_boxes):
             y_top = VIS_BOTTOM_Y - (j + 1) * box_step
             y_bot = y_top + BAR_BOX_H
-            draw.rectangle([x0, y_top, x0 + box_w, y_bot], fill=BAR_COLOR)
+            draw.rectangle([x0, y_top, x0 + box_w, y_bot], fill=fill)
 
 
-def draw_oscilloscope(draw: ImageDraw.ImageDraw, waveform: np.ndarray):
+def draw_oscilloscope(draw: ImageDraw.ImageDraw, waveform: np.ndarray,
+                      color: tuple[int, int, int] = DEFAULT_VIS_COLOR):
     """Waveform trace across the bottom of the frame."""
     if len(waveform) < 2:
         return
@@ -179,15 +188,16 @@ def draw_oscilloscope(draw: ImageDraw.ImageDraw, waveform: np.ndarray):
         x = int(i * WIDTH / len(waveform))
         y = int(center_y - sample * amplitude_h)
         points.append((x, y))
-    # draw thick glowing line
     for thickness, alpha in [(5, 40), (3, 80), (1, 200)]:
-        color = (200, 80, 200, alpha)
+        fill = _vis_rgba(color, alpha)
         for j in range(len(points) - 1):
-            draw.line([points[j], points[j + 1]], fill=color, width=thickness)
+            draw.line([points[j], points[j + 1]], fill=fill, width=thickness)
 
 
-def draw_radial_visualizer(draw: ImageDraw.ImageDraw, amplitudes: np.ndarray):
+def draw_radial_visualizer(draw: ImageDraw.ImageDraw, amplitudes: np.ndarray,
+                           color: tuple[int, int, int] = DEFAULT_VIS_COLOR):
     """Bars arranged in a circle at the bottom-center."""
+    fill = _vis_rgba(color)
     cx, cy = WIDTH // 2, VIS_BOTTOM_Y - 20
     n = len(amplitudes)
     inner_r = 60
@@ -199,7 +209,7 @@ def draw_radial_visualizer(draw: ImageDraw.ImageDraw, amplitudes: np.ndarray):
         y0 = cy + int(inner_r * math.sin(angle))
         x1 = cx + int(bar_len * math.cos(angle))
         y1 = cy + int(bar_len * math.sin(angle))
-        draw.line([(x0, y0), (x1, y1)], fill=BAR_COLOR, width=3)
+        draw.line([(x0, y0), (x1, y1)], fill=fill, width=3)
 
 
 class Particle:
@@ -225,7 +235,7 @@ class Particle:
         self.vy += 40 * dt  # gravity
         self.life -= self.decay * dt
 
-    def draw(self, overlay: Image.Image):
+    def draw(self, overlay: Image.Image, color: tuple[int, int, int] = DEFAULT_VIS_COLOR):
         if self.life <= 0:
             return
         draw = ImageDraw.Draw(overlay)
@@ -233,7 +243,7 @@ class Particle:
         r = max(1, int(self.size * self.life))
         cx, cy = int(self.x), int(self.y)
         draw.ellipse([cx - r, cy - r, cx + r, cy + r],
-                     fill=(220, 100, 220, alpha))
+                     fill=_vis_rgba(color, alpha))
 
 
 # ── frame renderer ──────────────────────────────────────────────────────────
@@ -241,7 +251,8 @@ class Particle:
 def build_renderer(bg_image: Image.Image, bar_data: np.ndarray,
                    petals: list[Petal], visualizer: str = "Bar Graph",
                    waveforms: list | None = None, particles: list | None = None,
-                   raindrops: list[Raindrop] | None = None):
+                   raindrops: list[Raindrop] | None = None,
+                   vis_color: tuple[int, int, int] = DEFAULT_VIS_COLOR):
     """Return a function(t) -> numpy frame for VideoClip."""
 
     bg = bg_image.convert("RGBA").resize((WIDTH, HEIGHT), Image.LANCZOS)
@@ -258,9 +269,9 @@ def build_renderer(bg_image: Image.Image, bar_data: np.ndarray,
         # draw chosen visualizer
         if visualizer == "Oscilloscope" and waveforms:
             wf_idx = min(frame_idx, len(waveforms) - 1)
-            draw_oscilloscope(draw, waveforms[wf_idx])
+            draw_oscilloscope(draw, waveforms[wf_idx], vis_color)
         elif visualizer == "Radial":
-            draw_radial_visualizer(draw, amplitudes)
+            draw_radial_visualizer(draw, amplitudes, vis_color)
         elif visualizer == "Particle" and particles is not None:
             dt = 1.0 / FPS
             energy = float(amplitudes.mean())
@@ -269,9 +280,9 @@ def build_renderer(bg_image: Image.Image, bar_data: np.ndarray,
                     p.reset(energy)
             for p in particles:
                 p.update(dt)
-                p.draw(overlay)
+                p.draw(overlay, vis_color)
         else:
-            draw_bar_visualizer(draw, amplitudes)
+            draw_bar_visualizer(draw, amplitudes, vis_color)
 
         dt = 1.0 / FPS
 
@@ -303,6 +314,7 @@ def render_video(
     raindrop_count: int = NUM_RAINDROPS,
     duration: float | None = None,
     visualizer: str = "Bar Graph",
+    vis_color: tuple[int, int, int] = DEFAULT_VIS_COLOR,
     progress_callback: Callable[[float], None] | None = None,
 ) -> str:
     """Render an AMV and return the output file path.
@@ -334,7 +346,7 @@ def render_video(
 
     raindrops = [Raindrop() for _ in range(raindrop_count)] if raindrop_count > 0 else None
 
-    make_frame = build_renderer(bg, bar_data, petals, visualizer, waveforms, particles, raindrops)
+    make_frame = build_renderer(bg, bar_data, petals, visualizer, waveforms, particles, raindrops, vis_color)
 
     clip = VideoClip(make_frame, duration=dur).with_fps(FPS)
     audio_clip = AudioFileClip(audio_path)

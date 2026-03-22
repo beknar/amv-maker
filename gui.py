@@ -10,7 +10,7 @@ Usage:
 import queue
 import threading
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import colorchooser, filedialog, messagebox, ttk
 from pathlib import Path
 
 from PIL import Image, ImageTk
@@ -35,6 +35,7 @@ class AMVMakerApp(tk.Tk):
         self._bar_count = tk.IntVar(value=40)
         self._petal_count = tk.IntVar(value=25)
         self._raindrop_count = tk.IntVar(value=0)
+        self._vis_color: tuple[int, int, int] = (200, 80, 200)
         self._duration = tk.StringVar(value="")
         self._status = tk.StringVar(value="Ready")
         self._rendering = False
@@ -78,6 +79,13 @@ class AMVMakerApp(tk.Tk):
             values=VISUALIZER_TYPES, state="readonly", width=20
         )
         vis_combo.grid(row=0, column=1, sticky=tk.W, padx=5)
+
+        ttk.Label(cfg, text="Color:").grid(row=0, column=2, sticky=tk.W, padx=(15, 0), pady=2)
+        self._color_swatch = tk.Label(
+            cfg, bg="#c850c8", width=3, relief=tk.RAISED, cursor="hand2"
+        )
+        self._color_swatch.grid(row=0, column=3, sticky=tk.W, padx=5)
+        self._color_swatch.bind("<Button-1>", lambda e: self._pick_color())
 
         ttk.Label(cfg, text="Bars:").grid(row=1, column=0, sticky=tk.W, pady=2)
         ttk.Spinbox(cfg, from_=10, to=80, textvariable=self._bar_count, width=8).grid(
@@ -154,6 +162,14 @@ class AMVMakerApp(tk.Tk):
         if path:
             self._audio_path.set(path)
 
+    def _pick_color(self):
+        initial = "#%02x%02x%02x" % self._vis_color
+        result = colorchooser.askcolor(color=initial, title="Visualizer Color")
+        if result and result[0]:
+            rgb = tuple(int(c) for c in result[0])
+            self._vis_color = rgb
+            self._color_swatch.configure(bg=result[1])
+
     def _browse_output(self):
         path = filedialog.asksaveasfilename(
             title="Save Output As",
@@ -206,6 +222,7 @@ class AMVMakerApp(tk.Tk):
             raindrop_count=self._raindrop_count.get(),
             duration=duration,
             visualizer=self._visualizer.get(),
+            vis_color=self._vis_color,
         )
 
         thread = threading.Thread(target=self._render_worker, args=(params,), daemon=True)
