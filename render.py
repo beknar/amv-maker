@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 from typing import Callable
 
+import cv2
 import librosa
 import numpy as np
 import proglog
@@ -349,23 +350,27 @@ def build_renderer(bg_image: Image.Image, bar_data: np.ndarray,
                    beat_frames: np.ndarray | None = None):
     """Return a function(t) -> numpy frame for VideoClip."""
 
-    # extract animated GIF frames or use single static image
+    # extract animated frames or use single static image
     bg_frames = []
     bg_frame_duration = 1.0 / FPS  # default: match video FPS
-    n_frames = getattr(bg_image, "n_frames", 1)
-    if isinstance(n_frames, int) and n_frames > 1:
-        # animated GIF/APNG — extract all frames
-        for i in range(bg_image.n_frames):
-            bg_image.seek(i)
-            frame = bg_image.convert("RGBA").resize((WIDTH, HEIGHT), Image.LANCZOS)
-            bg_frames.append(frame)
-        # get frame duration from GIF metadata (milliseconds per frame)
-        info = bg_image.info
-        dur_ms = info.get("duration", 100)  # default 100ms if not specified
-        if dur_ms > 0:
-            bg_frame_duration = dur_ms / 1000.0
+
+    if isinstance(bg_image, list):
+        # pre-extracted frames (e.g. from MP4) — list of (PIL RGBA, duration)
+        bg_frames, bg_frame_duration = bg_image  # tuple: (frames_list, duration)
     else:
-        bg_frames.append(bg_image.convert("RGBA").resize((WIDTH, HEIGHT), Image.LANCZOS))
+        n_frames = getattr(bg_image, "n_frames", 1)
+        if isinstance(n_frames, int) and n_frames > 1:
+            # animated GIF/APNG — extract all frames
+            for i in range(bg_image.n_frames):
+                bg_image.seek(i)
+                frame = bg_image.convert("RGBA").resize((WIDTH, HEIGHT), Image.LANCZOS)
+                bg_frames.append(frame)
+            info = bg_image.info
+            dur_ms = info.get("duration", 100)
+            if dur_ms > 0:
+                bg_frame_duration = dur_ms / 1000.0
+        else:
+            bg_frames.append(bg_image.convert("RGBA").resize((WIDTH, HEIGHT), Image.LANCZOS))
 
     bg_is_animated = len(bg_frames) > 1
 
@@ -435,6 +440,45 @@ def build_renderer(bg_image: Image.Image, bar_data: np.ndarray,
     return make_frame
 
 
+# ── video background loading ────────────────────────────────────────────────
+
+VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".wmv", ".flv"}
+
+
+def load_video_frames(video_path: str) -> tuple[list[Image.Image], float]:
+    """Extract all frames from a video file as PIL RGBA images.
+
+    Returns (frames_list, frame_duration_seconds).
+    """
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise RuntimeError(f"Cannot open video background: {video_path}")
+
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    frame_duration = 1.0 / fps
+    frames = []
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        img = Image.fromarray(rgb).convert("RGBA").resize((WIDTH, HEIGHT), Image.LANCZOS)
+        frames.append(img)
+
+    cap.release()
+
+    if not frames:
+        raise RuntimeError(f"No frames found in video: {video_path}")
+
+    return frames, frame_duration
+
+
+def _is_video_file(path: str) -> bool:
+    """Check if a file path has a video extension."""
+    return Path(path).suffix.lower() in VIDEO_EXTENSIONS
+
+
 # ── public API ──────────────────────────────────────────────────────────────
 
 def render_video(
@@ -467,7 +511,11 @@ def render_video(
 
     dur = duration or audio_duration
 
-    bg = Image.open(image_path)
+    if _is_video_file(image_path):
+        frames, frame_dur = load_video_frames(image_path)
+        bg = (frames, frame_dur)  # tuple signals pre-extracted video frames
+    else:
+        bg = Image.open(image_path)
     petals = [Petal() for _ in range(petal_count)]
 
     waveforms = None
