@@ -19,6 +19,9 @@ test_real_audio_frame.png
 test_boxes.png
 test_rain.png
 
+# Claude Code
+.claude/
+
 # IDE
 .vscode/
 .idea/
