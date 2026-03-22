@@ -1,0 +1,32 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Output files
+output.mp4
+*.mp4
+*.wmv
+
+# Test artifacts
+test_frame.png
+test_real_frame.png
+test_real_audio_frame.png
+test_boxes.png
+test_rain.png
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Samples (user-provided media)
+samples/
+inputs/
