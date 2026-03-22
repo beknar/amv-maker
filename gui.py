@@ -62,7 +62,7 @@ class AMVMakerApp(tk.Tk):
         inp.pack(fill=tk.X, padx=10, pady=(10, 5))
 
         self._file_row(inp, "Image:", self._image_path, self._browse_image,
-                       [("Images", "*.png *.jpg *.jpeg *.bmp")])
+                       [("Images", "*.png *.jpg *.jpeg *.bmp *.gif *.apng")])
         self._file_row(inp, "Audio:", self._audio_path, self._browse_audio,
                        [("Audio", "*.mp3 *.wav *.aac *.ogg *.flac")])
 
@@ -154,7 +154,7 @@ class AMVMakerApp(tk.Tk):
     def _browse_image(self):
         path = filedialog.askopenfilename(
             title="Select Image",
-            filetypes=[("Images", "*.png *.jpg *.jpeg *.bmp"), ("All", "*.*")]
+            filetypes=[("Images", "*.png *.jpg *.jpeg *.bmp *.gif *.apng"), ("All", "*.*")]
         )
         if path:
             self._image_path.set(path)

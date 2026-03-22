@@ -349,7 +349,26 @@ def build_renderer(bg_image: Image.Image, bar_data: np.ndarray,
                    beat_frames: np.ndarray | None = None):
     """Return a function(t) -> numpy frame for VideoClip."""
 
-    bg = bg_image.convert("RGBA").resize((WIDTH, HEIGHT), Image.LANCZOS)
+    # extract animated GIF frames or use single static image
+    bg_frames = []
+    bg_frame_duration = 1.0 / FPS  # default: match video FPS
+    n_frames = getattr(bg_image, "n_frames", 1)
+    if isinstance(n_frames, int) and n_frames > 1:
+        # animated GIF/APNG — extract all frames
+        for i in range(bg_image.n_frames):
+            bg_image.seek(i)
+            frame = bg_image.convert("RGBA").resize((WIDTH, HEIGHT), Image.LANCZOS)
+            bg_frames.append(frame)
+        # get frame duration from GIF metadata (milliseconds per frame)
+        info = bg_image.info
+        dur_ms = info.get("duration", 100)  # default 100ms if not specified
+        if dur_ms > 0:
+            bg_frame_duration = dur_ms / 1000.0
+    else:
+        bg_frames.append(bg_image.convert("RGBA").resize((WIDTH, HEIGHT), Image.LANCZOS))
+
+    bg_is_animated = len(bg_frames) > 1
+
     if beat_frames is None:
         beat_frames = np.array([], dtype=int)
 
@@ -358,7 +377,12 @@ def build_renderer(bg_image: Image.Image, bar_data: np.ndarray,
         frame_idx = min(frame_idx, bar_data.shape[0] - 1)
         amplitudes = bar_data[frame_idx]
 
-        img = bg.copy()
+        # select background frame — cycle through GIF frames at their native rate
+        if bg_is_animated:
+            bg_idx = int(t / bg_frame_duration) % len(bg_frames)
+            img = bg_frames[bg_idx].copy()
+        else:
+            img = bg_frames[0].copy()
         overlay = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
 
@@ -495,6 +519,11 @@ def render_video(
         preset="medium",
         threads=4,
         logger=logger,
+        ffmpeg_params=[
+            "-movflags", "+faststart",   # moov atom at front for seeking
+            "-g", str(FPS),              # keyframe every 1 second
+            "-bf", "0",                  # no B-frames (cleaner seeking)
+        ],
     )
 
     if progress_callback:

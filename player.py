@@ -201,8 +201,14 @@ class VideoPlayer(tk.Frame):
 
         ret, frame = self._cap.read()
         if not ret:
-            self.stop()
-            return
+            # seek may have landed on a corrupt frame — retry once from a
+            # nearby keyframe by seeking back a few frames
+            fallback = max(0, target_frame - 5)
+            self._cap.set(cv2.CAP_PROP_POS_FRAMES, fallback)
+            ret, frame = self._cap.read()
+            if not ret:
+                self._schedule_next_frame()
+                return
 
         self._display_cv_frame(frame)
 
