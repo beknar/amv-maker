@@ -219,29 +219,40 @@ def draw_lightning(draw: ImageDraw.ImageDraw, intensity: int, frame_idx: int,
 
     intensity: 1-10 scale controlling brightness, bolt count, and flash strength.
     Returns flash alpha (0-255) for a whole-screen white flash overlay.
+    Bolts persist for several frames with fading alpha; flash is kept subtle
+    so it doesn't wash out the bolts.
     """
     if intensity <= 0 or len(beat_frames) == 0:
         return 0
 
-    # check if we're near a beat (within a few frames for flash decay)
     flash_alpha = 0
-    flash_duration = 4  # frames of flash decay
+    bolt_duration = 6   # frames the bolt stays visible
+    flash_duration = 4  # frames the flash decays over
+
     for beat in beat_frames:
         diff = frame_idx - beat
-        if 0 <= diff < flash_duration:
-            # decay over flash_duration frames
+        if diff < 0 or diff >= max(bolt_duration, flash_duration):
+            continue
+
+        # screen flash — subtle so it doesn't cover the bolts
+        if diff < flash_duration:
             t = 1.0 - diff / flash_duration
-            base_alpha = int(30 + intensity * 15)  # 45-180 range
+            base_alpha = int(15 + intensity * 8)  # 23-95 range (subtle)
             flash_alpha = max(flash_alpha, int(base_alpha * t))
 
-            if diff == 0:
-                # draw actual bolt(s) on the beat frame
-                num_bolts = max(1, intensity // 3)
-                for _ in range(num_bolts):
-                    bx = random.randint(int(WIDTH * 0.1), int(WIDTH * 0.9))
-                    bolt_alpha = min(255, 100 + intensity * 15)
-                    _draw_lightning_bolt(draw, bx, 0, random.randint(HEIGHT // 2, HEIGHT),
-                                        bolt_alpha, branch_chance=0.2 + intensity * 0.05)
+        # draw bolts — persist with fading alpha
+        if diff < bolt_duration:
+            fade = 1.0 - diff / bolt_duration
+            # seed random per beat so the same bolt shape persists across frames
+            rng_state = random.getstate()
+            random.seed(int(beat) * 31337)
+            num_bolts = max(1, intensity // 3)
+            for _ in range(num_bolts):
+                bx = random.randint(int(WIDTH * 0.1), int(WIDTH * 0.9))
+                bolt_alpha = int(min(255, 150 + intensity * 10) * fade)
+                _draw_lightning_bolt(draw, bx, 0, random.randint(HEIGHT // 2, HEIGHT),
+                                    bolt_alpha, branch_chance=0.2 + intensity * 0.05)
+            random.setstate(rng_state)
 
     return flash_alpha
 
@@ -422,18 +433,18 @@ def build_renderer(bg_image: Image.Image, bar_data: np.ndarray,
                 r.update(dt)
                 r.draw(draw)
 
-        # draw lightning
+        # draw lightning — get flash alpha first, then draw bolts on overlay
         flash_alpha = 0
         if lightning_intensity > 0:
             flash_alpha = draw_lightning(draw, lightning_intensity, frame_idx,
                                          beat_frames, FPS)
 
-        img = Image.alpha_composite(img, overlay)
-
-        # apply screen flash for lightning
+        # apply screen flash BEFORE overlay so bolts appear on top of flash
         if flash_alpha > 0:
             flash = Image.new("RGBA", (WIDTH, HEIGHT), (255, 255, 255, flash_alpha))
             img = Image.alpha_composite(img, flash)
+
+        img = Image.alpha_composite(img, overlay)
 
         return np.array(img.convert("RGB"))
 
