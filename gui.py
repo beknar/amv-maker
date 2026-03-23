@@ -187,7 +187,19 @@ class AMVMakerApp(tk.Tk):
 
     def _show_thumbnail(self, path: str):
         try:
-            img = Image.open(path)
+            from render import _is_video_file
+            if _is_video_file(path):
+                import cv2
+                cap = cv2.VideoCapture(path)
+                ret, frame = cap.read()
+                cap.release()
+                if ret:
+                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    img = Image.fromarray(rgb)
+                else:
+                    return
+            else:
+                img = Image.open(path)
             img.thumbnail((160, 100), Image.LANCZOS)
             self._thumb_photo = ImageTk.PhotoImage(img)
             self._thumb_label.configure(image=self._thumb_photo)

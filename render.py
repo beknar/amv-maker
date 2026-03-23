@@ -354,9 +354,9 @@ def build_renderer(bg_image: Image.Image, bar_data: np.ndarray,
     bg_frames = []
     bg_frame_duration = 1.0 / FPS  # default: match video FPS
 
-    if isinstance(bg_image, list):
-        # pre-extracted frames (e.g. from MP4) — list of (PIL RGBA, duration)
-        bg_frames, bg_frame_duration = bg_image  # tuple: (frames_list, duration)
+    if isinstance(bg_image, (list, tuple)):
+        # pre-extracted frames (e.g. from MP4) — (frames_list, duration)
+        bg_frames, bg_frame_duration = bg_image
     else:
         n_frames = getattr(bg_image, "n_frames", 1)
         if isinstance(n_frames, int) and n_frames > 1:
