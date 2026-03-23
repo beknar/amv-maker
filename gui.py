@@ -23,11 +23,11 @@ class AMVMakerApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("AMV Maker")
-        self.geometry("720x1020")
+        self.geometry("720x1000")
         self.resizable(False, False)
         self.configure(bg="#1a1a2e")
 
-        self._image_path = tk.StringVar()
+        self._image_paths: list[str] = []
         self._audio_paths: list[str] = []
         default_output = str(Path.home() / "Videos" / "amv_output.mp4")
         self._output_path = tk.StringVar(value=default_output)
@@ -36,13 +36,13 @@ class AMVMakerApp(tk.Tk):
         self._petal_count = tk.IntVar(value=25)
         self._raindrop_count = tk.IntVar(value=0)
         self._lightning_intensity = tk.IntVar(value=0)
+        self._heart_intensity = tk.IntVar(value=0)
+        self._heart_color: tuple[int, int, int] = (255, 80, 150)
         self._vis_color: tuple[int, int, int] = (200, 80, 200)
         self._duration = tk.StringVar(value="")
         self._status = tk.StringVar(value="Ready")
         self._rendering = False
         self._queue: queue.Queue = queue.Queue()
-
-        self._thumb_photo: ImageTk.PhotoImage | None = None
 
         self._build_ui()
 
@@ -57,32 +57,21 @@ class AMVMakerApp(tk.Tk):
         style.configure("TButton", background="#2a2a4e", foreground="#e0e0e0")
         style.configure("TEntry", fieldbackground="#2a2a4e", foreground="#e0e0e0")
 
-        # ── inputs ──
-        inp = ttk.LabelFrame(self, text="  Inputs  ", padding=8)
-        inp.pack(fill=tk.X, padx=10, pady=(10, 5))
+        # ── tracks (image + audio paired) ──
+        trk = ttk.LabelFrame(self, text="  Tracks (Image + Audio, in order)  ", padding=8)
+        trk.pack(fill=tk.X, padx=10, pady=(10, 5))
 
-        self._file_row(inp, "Image:", self._image_path, self._browse_image,
-                       [("Images", "*.png *.jpg *.jpeg *.bmp *.gif *.apng *.mp4 *.avi *.mov *.mkv *.webm")])
-
-        # thumbnail preview
-        self._thumb_label = tk.Label(inp, bg="#1a1a2e", width=20, height=6)
-        self._thumb_label.grid(row=1, column=0, columnspan=3, pady=(5, 0))
-
-        # ── audio playlist ──
-        aud = ttk.LabelFrame(self, text="  Audio Tracks (in order)  ", padding=8)
-        aud.pack(fill=tk.X, padx=10, pady=(5, 5))
-
-        self._audio_listbox = tk.Listbox(aud, height=4, bg="#2a2a4e", fg="#e0e0e0",
+        self._track_listbox = tk.Listbox(trk, height=5, bg="#2a2a4e", fg="#e0e0e0",
                                          selectmode=tk.SINGLE, activestyle="none")
-        self._audio_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+        self._track_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
 
-        aud_btns = tk.Frame(aud, bg="#1a1a2e")
-        aud_btns.pack(side=tk.LEFT, fill=tk.Y)
+        trk_btns = tk.Frame(trk, bg="#1a1a2e")
+        trk_btns.pack(side=tk.LEFT, fill=tk.Y)
 
-        ttk.Button(aud_btns, text="Add", width=8, command=self._add_audio).pack(pady=2)
-        ttk.Button(aud_btns, text="Remove", width=8, command=self._remove_audio).pack(pady=2)
-        ttk.Button(aud_btns, text="Move Up", width=8, command=self._move_audio_up).pack(pady=2)
-        ttk.Button(aud_btns, text="Move Down", width=8, command=self._move_audio_down).pack(pady=2)
+        ttk.Button(trk_btns, text="Add Track", width=10, command=self._add_track).pack(pady=2)
+        ttk.Button(trk_btns, text="Remove", width=10, command=self._remove_track).pack(pady=2)
+        ttk.Button(trk_btns, text="Move Up", width=10, command=self._move_track_up).pack(pady=2)
+        ttk.Button(trk_btns, text="Move Down", width=10, command=self._move_track_down).pack(pady=2)
 
         # ── settings ──
         cfg = ttk.LabelFrame(self, text="  Settings  ", padding=8)
@@ -120,16 +109,25 @@ class AMVMakerApp(tk.Tk):
             row=4, column=1, sticky=tk.W, padx=5)
         ttk.Label(cfg, text="(0 = off, 1-10)").grid(row=4, column=2, sticky=tk.W)
 
-        ttk.Label(cfg, text="Duration (s):").grid(row=5, column=0, sticky=tk.W, pady=2)
-        ttk.Entry(cfg, textvariable=self._duration, width=10).grid(
+        ttk.Label(cfg, text="Hearts:").grid(row=5, column=0, sticky=tk.W, pady=2)
+        ttk.Spinbox(cfg, from_=0, to=20, textvariable=self._heart_intensity, width=8).grid(
             row=5, column=1, sticky=tk.W, padx=5)
-        ttk.Label(cfg, text="(blank = full track)").grid(row=5, column=2, sticky=tk.W)
+        self._heart_swatch = tk.Label(
+            cfg, bg="#ff5096", width=3, relief=tk.RAISED, cursor="hand2"
+        )
+        self._heart_swatch.grid(row=5, column=2, sticky=tk.W, padx=5)
+        self._heart_swatch.bind("<Button-1>", lambda e: self._pick_heart_color())
 
-        ttk.Label(cfg, text="Output:").grid(row=6, column=0, sticky=tk.W, pady=2)
+        ttk.Label(cfg, text="Duration (s):").grid(row=6, column=0, sticky=tk.W, pady=2)
+        ttk.Entry(cfg, textvariable=self._duration, width=10).grid(
+            row=6, column=1, sticky=tk.W, padx=5)
+        ttk.Label(cfg, text="(blank = full track)").grid(row=6, column=2, sticky=tk.W)
+
+        ttk.Label(cfg, text="Output:").grid(row=7, column=0, sticky=tk.W, pady=2)
         ttk.Entry(cfg, textvariable=self._output_path, width=45).grid(
-            row=6, column=1, columnspan=2, sticky=tk.W, padx=5)
+            row=7, column=1, columnspan=2, sticky=tk.W, padx=5)
         ttk.Button(cfg, text="Browse…", command=self._browse_output).grid(
-            row=6, column=3, padx=5)
+            row=7, column=3, padx=5)
 
         # ── render ──
         ren = tk.Frame(self, bg="#1a1a2e")
@@ -155,66 +153,57 @@ class AMVMakerApp(tk.Tk):
         self.player = VideoPlayer(pf)
         self.player.pack()
 
-    def _file_row(self, parent, label, var, browse_cmd, filetypes):
-        row = parent.grid_size()[1]
-        ttk.Label(parent, text=label).grid(row=row, column=0, sticky=tk.W, pady=2)
-        ttk.Entry(parent, textvariable=var, width=45).grid(
-            row=row, column=1, padx=5, sticky=tk.W)
-        ttk.Button(parent, text="Browse…", command=browse_cmd).grid(
-            row=row, column=2, padx=5)
+    # ── track management (paired image + audio) ────────────────────────────
 
-    # ── browse dialogs ──────────────────────────────────────────────────────
-
-    def _browse_image(self):
-        path = filedialog.askopenfilename(
-            title="Select Image",
+    def _add_track(self):
+        img = filedialog.askopenfilename(
+            title="Select Image for Track",
             filetypes=[("Images", "*.png *.jpg *.jpeg *.bmp *.gif *.apng *.mp4 *.avi *.mov *.mkv *.webm"), ("All", "*.*")]
         )
-        if path:
-            self._image_path.set(path)
-            self._show_thumbnail(path)
-
-    def _add_audio(self):
-        paths = filedialog.askopenfilenames(
-            title="Select Audio Track(s)",
+        if not img:
+            return
+        aud = filedialog.askopenfilename(
+            title="Select Audio for Track",
             filetypes=[("Audio", "*.mp3 *.wav *.aac *.ogg *.flac"), ("All", "*.*")]
         )
-        for path in paths:
-            self._audio_paths.append(path)
-            self._audio_listbox.insert(tk.END, Path(path).name)
+        if not aud:
+            return
+        self._image_paths.append(img)
+        self._audio_paths.append(aud)
+        label = f"{Path(aud).stem}  |  {Path(img).name}"
+        self._track_listbox.insert(tk.END, label)
 
-    def _remove_audio(self):
-        sel = self._audio_listbox.curselection()
+    def _remove_track(self):
+        sel = self._track_listbox.curselection()
         if sel:
             idx = sel[0]
+            self._image_paths.pop(idx)
             self._audio_paths.pop(idx)
-            self._audio_listbox.delete(idx)
+            self._track_listbox.delete(idx)
 
-    def _move_audio_up(self):
-        sel = self._audio_listbox.curselection()
+    def _move_track_up(self):
+        sel = self._track_listbox.curselection()
         if not sel or sel[0] == 0:
             return
         idx = sel[0]
-        # swap in list
-        self._audio_paths[idx - 1], self._audio_paths[idx] = \
-            self._audio_paths[idx], self._audio_paths[idx - 1]
-        # swap in listbox
-        text = self._audio_listbox.get(idx)
-        self._audio_listbox.delete(idx)
-        self._audio_listbox.insert(idx - 1, text)
-        self._audio_listbox.selection_set(idx - 1)
+        for lst in [self._image_paths, self._audio_paths]:
+            lst[idx - 1], lst[idx] = lst[idx], lst[idx - 1]
+        text = self._track_listbox.get(idx)
+        self._track_listbox.delete(idx)
+        self._track_listbox.insert(idx - 1, text)
+        self._track_listbox.selection_set(idx - 1)
 
-    def _move_audio_down(self):
-        sel = self._audio_listbox.curselection()
+    def _move_track_down(self):
+        sel = self._track_listbox.curselection()
         if not sel or sel[0] >= len(self._audio_paths) - 1:
             return
         idx = sel[0]
-        self._audio_paths[idx], self._audio_paths[idx + 1] = \
-            self._audio_paths[idx + 1], self._audio_paths[idx]
-        text = self._audio_listbox.get(idx)
-        self._audio_listbox.delete(idx)
-        self._audio_listbox.insert(idx + 1, text)
-        self._audio_listbox.selection_set(idx + 1)
+        for lst in [self._image_paths, self._audio_paths]:
+            lst[idx], lst[idx + 1] = lst[idx + 1], lst[idx]
+        text = self._track_listbox.get(idx)
+        self._track_listbox.delete(idx)
+        self._track_listbox.insert(idx + 1, text)
+        self._track_listbox.selection_set(idx + 1)
 
     def _pick_color(self):
         initial = "#%02x%02x%02x" % self._vis_color
@@ -223,6 +212,14 @@ class AMVMakerApp(tk.Tk):
             rgb = tuple(int(c) for c in result[0])
             self._vis_color = rgb
             self._color_swatch.configure(bg=result[1])
+
+    def _pick_heart_color(self):
+        initial = "#%02x%02x%02x" % self._heart_color
+        result = colorchooser.askcolor(color=initial, title="Heart Color")
+        if result and result[0]:
+            rgb = tuple(int(c) for c in result[0])
+            self._heart_color = rgb
+            self._heart_swatch.configure(bg=result[1])
 
     def _browse_output(self):
         path = filedialog.asksaveasfilename(
@@ -233,39 +230,18 @@ class AMVMakerApp(tk.Tk):
         if path:
             self._output_path.set(path)
 
-    def _show_thumbnail(self, path: str):
-        try:
-            from render import _is_video_file
-            if _is_video_file(path):
-                import cv2
-                cap = cv2.VideoCapture(path)
-                ret, frame = cap.read()
-                cap.release()
-                if ret:
-                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    img = Image.fromarray(rgb)
-                else:
-                    return
-            else:
-                img = Image.open(path)
-            img.thumbnail((160, 100), Image.LANCZOS)
-            self._thumb_photo = ImageTk.PhotoImage(img)
-            self._thumb_label.configure(image=self._thumb_photo)
-        except Exception:
-            pass
-
     # ── rendering ───────────────────────────────────────────────────────────
 
     def _start_render(self):
-        img = self._image_path.get()
         out = self._output_path.get()
 
-        if not img or not Path(img).exists():
-            messagebox.showerror("Error", "Please select a valid image file.")
+        if not self._audio_paths or not self._image_paths:
+            messagebox.showerror("Error", "Please add at least one track (image + audio).")
             return
-        if not self._audio_paths:
-            messagebox.showerror("Error", "Please add at least one audio track.")
-            return
+        for img in self._image_paths:
+            if not Path(img).exists():
+                messagebox.showerror("Error", f"Image file not found:\n{img}")
+                return
         for aud in self._audio_paths:
             if not Path(aud).exists():
                 messagebox.showerror("Error", f"Audio file not found:\n{aud}")
@@ -282,15 +258,18 @@ class AMVMakerApp(tk.Tk):
         self._status.set("Rendering… 0%")
         self._progress_var.set(0)
 
-        aud = self._audio_paths if len(self._audio_paths) > 1 else self._audio_paths[0]
+        imgs = self._image_paths if len(self._image_paths) > 1 else self._image_paths[0]
+        auds = self._audio_paths if len(self._audio_paths) > 1 else self._audio_paths[0]
         params = dict(
-            image_path=img,
-            audio_path=aud,
+            image_path=imgs,
+            audio_path=auds,
             output_path=out,
             bar_count=self._bar_count.get(),
             petal_count=self._petal_count.get(),
             raindrop_count=self._raindrop_count.get(),
             lightning_intensity=self._lightning_intensity.get(),
+            heart_intensity=self._heart_intensity.get(),
+            heart_color=self._heart_color,
             duration=duration,
             visualizer=self._visualizer.get(),
             vis_color=self._vis_color,

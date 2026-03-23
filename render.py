@@ -43,6 +43,8 @@ MAX_BOXES = 25
 NUM_PETALS = 25
 NUM_RAINDROPS = 0
 LIGHTNING_INTENSITY = 0   # 0 = off, 1-10 scale
+HEART_INTENSITY = 0       # 0 = off, 1-20 max hearts on screen
+HEART_COLOR = (255, 80, 150)
 
 VISUALIZER_TYPES = ["Bar Graph", "Oscilloscope", "Radial", "Particle"]
 
@@ -110,6 +112,85 @@ class Raindrop:
         y0 = int(self.y - self.length)
         color = (180, 200, 255, self.alpha)
         draw.line([(x, y0), (x, y1)], fill=color, width=self.width)
+
+
+# ── heart particles ────────────────────────────────────────────────────────
+
+class Heart:
+    """A hollow heart that fades in and out in the top-left area."""
+
+    def __init__(self, max_hearts: int):
+        self.max_hearts = max_hearts
+        self.reset()
+
+    def reset(self):
+        # position in top-left quadrant with some randomness
+        self.x = random.uniform(30, WIDTH * 0.3)
+        self.y = random.uniform(30, HEIGHT * 0.3)
+        self.size = random.uniform(12, 30)
+        self.phase = 0.0  # 0→1 fade in, 1→2 hold, 2→3 fade out
+        self.speed = random.uniform(0.4, 0.8)  # phase speed per second
+        self.active = False
+        self.wait = random.uniform(0.5, 3.0)  # seconds before appearing
+
+    def update(self, dt: float):
+        if not self.active:
+            self.wait -= dt
+            if self.wait <= 0:
+                self.active = True
+            return
+
+        self.phase += self.speed * dt
+        if self.phase >= 3.0:
+            self.reset()
+
+    def get_alpha(self) -> int:
+        if not self.active:
+            return 0
+        if self.phase < 1.0:
+            # fade in
+            return int(220 * self.phase)
+        elif self.phase < 2.0:
+            # hold
+            return 220
+        else:
+            # fade out
+            return int(220 * (3.0 - self.phase))
+
+    def draw(self, draw_ctx: ImageDraw.ImageDraw,
+             color: tuple[int, int, int] = HEART_COLOR):
+        alpha = self.get_alpha()
+        if alpha <= 0:
+            return
+        cx, cy = int(self.x), int(self.y)
+        s = self.size
+        fill = (color[0], color[1], color[2], alpha)
+        # draw hollow heart using two overlapping circles + triangle outline
+        # left bump
+        r = s * 0.5
+        lx, ly = cx - r * 0.5, cy - r * 0.3
+        rx, ry = cx + r * 0.5, cy - r * 0.3
+        # draw as polygon outline for hollow effect
+        pts = _heart_polygon(cx, cy, s)
+        draw_ctx.polygon(pts, outline=fill)
+        # draw slightly thicker for visibility
+        for offset in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            shifted = [(p[0] + offset[0], p[1] + offset[1]) for p in pts]
+            draw_ctx.polygon(shifted, outline=fill)
+
+
+def _heart_polygon(cx: float, cy: float, size: float) -> list[tuple[int, int]]:
+    """Generate heart shape as a polygon of points."""
+    points = []
+    steps = 30
+    for i in range(steps):
+        t = 2 * math.pi * i / steps
+        # parametric heart curve
+        x = size * 0.8 * (16 * math.sin(t) ** 3) / 16
+        y = -size * 0.8 * (13 * math.cos(t) - 5 * math.cos(2 * t) -
+                           2 * math.cos(3 * t) - math.cos(4 * t)) / 16
+        points.append((int(cx + x), int(cy + y)))
+    return points
 
 
 # ── audio analysis ──────────────────────────────────────────────────────────
@@ -353,38 +434,60 @@ class Particle:
 
 # ── frame renderer ──────────────────────────────────────────────────────────
 
-def build_renderer(bg_image: Image.Image, bar_data: np.ndarray,
+def _load_bg_source(bg_image) -> tuple[list[Image.Image], float]:
+    """Load a background source into a list of RGBA frames and frame duration."""
+    frames = []
+    frame_duration = 1.0 / FPS
+
+    if isinstance(bg_image, (list, tuple)):
+        frames, frame_duration = bg_image
+    else:
+        n_frames = getattr(bg_image, "n_frames", 1)
+        if isinstance(n_frames, int) and n_frames > 1:
+            for i in range(bg_image.n_frames):
+                bg_image.seek(i)
+                frame = bg_image.convert("RGBA").resize((WIDTH, HEIGHT), Image.LANCZOS)
+                frames.append(frame)
+            info = bg_image.info
+            dur_ms = info.get("duration", 100)
+            if dur_ms > 0:
+                frame_duration = dur_ms / 1000.0
+        else:
+            frames.append(bg_image.convert("RGBA").resize((WIDTH, HEIGHT), Image.LANCZOS))
+
+    return frames, frame_duration
+
+
+def build_renderer(bg_image, bar_data: np.ndarray,
                    petals: list[Petal], visualizer: str = "Bar Graph",
                    waveforms: list | None = None, particles: list | None = None,
                    raindrops: list[Raindrop] | None = None,
                    vis_color: tuple[int, int, int] = DEFAULT_VIS_COLOR,
                    lightning_intensity: int = 0,
-                   beat_frames: np.ndarray | None = None):
-    """Return a function(t) -> numpy frame for VideoClip."""
+                   beat_frames: np.ndarray | None = None,
+                   hearts: list[Heart] | None = None,
+                   heart_color: tuple[int, int, int] = HEART_COLOR,
+                   track_backgrounds: list | None = None,
+                   track_durations: list[float] | None = None):
+    """Return a function(t) -> numpy frame for VideoClip.
 
-    # extract animated frames or use single static image
-    bg_frames = []
-    bg_frame_duration = 1.0 / FPS  # default: match video FPS
+    Args:
+        bg_image: single PIL image, tuple of (frames, duration), or ignored
+                  if track_backgrounds is provided.
+        track_backgrounds: list of bg sources (one per audio track).
+        track_durations: cumulative end times for each track in seconds.
+    """
 
-    if isinstance(bg_image, (list, tuple)):
-        # pre-extracted frames (e.g. from MP4) — (frames_list, duration)
-        bg_frames, bg_frame_duration = bg_image
+    # multi-track backgrounds: each track has its own bg source
+    if track_backgrounds and track_durations:
+        bg_segments = []
+        for tb in track_backgrounds:
+            frames, fdur = _load_bg_source(tb)
+            bg_segments.append((frames, fdur, len(frames) > 1))
     else:
-        n_frames = getattr(bg_image, "n_frames", 1)
-        if isinstance(n_frames, int) and n_frames > 1:
-            # animated GIF/APNG — extract all frames
-            for i in range(bg_image.n_frames):
-                bg_image.seek(i)
-                frame = bg_image.convert("RGBA").resize((WIDTH, HEIGHT), Image.LANCZOS)
-                bg_frames.append(frame)
-            info = bg_image.info
-            dur_ms = info.get("duration", 100)
-            if dur_ms > 0:
-                bg_frame_duration = dur_ms / 1000.0
-        else:
-            bg_frames.append(bg_image.convert("RGBA").resize((WIDTH, HEIGHT), Image.LANCZOS))
-
-    bg_is_animated = len(bg_frames) > 1
+        frames, fdur = _load_bg_source(bg_image)
+        bg_segments = [(frames, fdur, len(frames) > 1)]
+        track_durations = None
 
     if beat_frames is None:
         beat_frames = np.array([], dtype=int)
@@ -394,12 +497,26 @@ def build_renderer(bg_image: Image.Image, bar_data: np.ndarray,
         frame_idx = min(frame_idx, bar_data.shape[0] - 1)
         amplitudes = bar_data[frame_idx]
 
-        # select background frame — cycle through GIF frames at their native rate
-        if bg_is_animated:
-            bg_idx = int(t / bg_frame_duration) % len(bg_frames)
-            img = bg_frames[bg_idx].copy()
+        # select background segment based on track timing
+        seg_idx = 0
+        seg_start = 0.0
+        if track_durations:
+            for i, end_t in enumerate(track_durations):
+                if t < end_t:
+                    seg_idx = i
+                    break
+                seg_start = end_t
+            else:
+                seg_idx = len(track_durations) - 1
+                seg_start = track_durations[-2] if len(track_durations) > 1 else 0.0
+
+        seg_frames, seg_fdur, seg_animated = bg_segments[min(seg_idx, len(bg_segments) - 1)]
+        if seg_animated:
+            local_t = t - seg_start
+            bg_idx = int(local_t / seg_fdur) % len(seg_frames)
+            img = seg_frames[bg_idx].copy()
         else:
-            img = bg_frames[0].copy()
+            img = seg_frames[0].copy()
         overlay = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
 
@@ -433,6 +550,12 @@ def build_renderer(bg_image: Image.Image, bar_data: np.ndarray,
             for r in raindrops:
                 r.update(dt)
                 r.draw(draw)
+
+        # draw hearts
+        if hearts:
+            for h in hearts:
+                h.update(dt)
+                h.draw(draw, heart_color)
 
         # draw lightning — get flash alpha first, then draw bolts on overlay
         flash_alpha = 0
@@ -517,13 +640,15 @@ def concatenate_audio_files(audio_paths: list[str], output_path: str) -> str:
 # ── public API ──────────────────────────────────────────────────────────────
 
 def render_video(
-    image_path: str,
+    image_path: str | list[str],
     audio_path: str | list[str],
     output_path: str = "output.mp4",
     bar_count: int = BAR_COUNT,
     petal_count: int = NUM_PETALS,
     raindrop_count: int = NUM_RAINDROPS,
     lightning_intensity: int = LIGHTNING_INTENSITY,
+    heart_intensity: int = HEART_INTENSITY,
+    heart_color: tuple[int, int, int] = HEART_COLOR,
     duration: float | None = None,
     visualizer: str = "Bar Graph",
     vis_color: tuple[int, int, int] = DEFAULT_VIS_COLOR,
@@ -532,6 +657,7 @@ def render_video(
     """Render an AMV and return the output file path.
 
     Args:
+        image_path: single path or list of paths (one per audio track).
         audio_path: single path or list of paths to concatenate in order.
         progress_callback: called with a float 0.0–1.0 representing progress.
     """
@@ -541,7 +667,9 @@ def render_video(
     # concatenate multiple audio files if needed
     import tempfile
     _temp_audio = None
+    _original_audio_paths = None
     if isinstance(audio_path, list):
+        _original_audio_paths = list(audio_path)
         if len(audio_path) == 1:
             audio_path = audio_path[0]
         else:
@@ -559,11 +687,38 @@ def render_video(
 
     dur = duration or audio_duration
 
-    if _is_video_file(image_path):
-        frames, frame_dur = load_video_frames(image_path)
-        bg = (frames, frame_dur)  # tuple signals pre-extracted video frames
+    # load background(s)
+    track_backgrounds = None
+    track_durations_list = None
+    bg = None
+
+    image_paths = image_path if isinstance(image_path, list) else [image_path]
+    original_audio_paths = _original_audio_paths if '_original_audio_paths' in dir() else None
+
+    if len(image_paths) > 1 and _original_audio_paths is not None:
+        # multiple images paired with audio tracks — compute per-track durations
+        track_backgrounds = []
+        track_durations_list = []
+        cumulative = 0.0
+        for i, img_p in enumerate(image_paths):
+            if _is_video_file(img_p):
+                f, fd = load_video_frames(img_p)
+                track_backgrounds.append((f, fd))
+            else:
+                track_backgrounds.append(Image.open(img_p))
+            # get duration of corresponding audio track
+            if i < len(_original_audio_paths):
+                y_trk, sr_trk = librosa.load(_original_audio_paths[i], sr=None, mono=True)
+                cumulative += len(y_trk) / sr_trk
+            track_durations_list.append(cumulative)
     else:
-        bg = Image.open(image_path)
+        p = image_paths[0]
+        if _is_video_file(p):
+            frames, frame_dur = load_video_frames(p)
+            bg = (frames, frame_dur)
+        else:
+            bg = Image.open(p)
+
     petals = [Petal() for _ in range(petal_count)]
 
     waveforms = None
@@ -574,13 +729,16 @@ def render_video(
         particles = [Particle() for _ in range(80)]
 
     raindrops = [Raindrop() for _ in range(raindrop_count)] if raindrop_count > 0 else None
+    hearts_list = [Heart(heart_intensity) for _ in range(heart_intensity)] if heart_intensity > 0 else None
 
     beat_frames = None
     if lightning_intensity > 0:
         beat_frames = detect_beats(y_samples, sr, FPS, min_gap_s=5.0)
 
     make_frame = build_renderer(bg, bar_data, petals, visualizer, waveforms, particles,
-                                raindrops, vis_color, lightning_intensity, beat_frames)
+                                raindrops, vis_color, lightning_intensity, beat_frames,
+                                hearts_list, heart_color,
+                                track_backgrounds, track_durations_list)
 
     clip = VideoClip(make_frame, duration=dur).with_fps(FPS)
     audio_clip = AudioFileClip(audio_path)
