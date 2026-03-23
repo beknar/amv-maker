@@ -90,6 +90,18 @@ python gui.py
 4. Click **Render** and watch the progress bar.
 5. When complete, the video auto-loads into the built-in player — press Play to preview.
 
+### Recommended Settings
+
+For all effects running simultaneously with the Bar Graph visualizer:
+
+| Setting | Value |
+|---------|-------|
+| Visualizer | Bar Graph |
+| Bars | 100 |
+| Petals | 50 |
+| Rainfall | 50 |
+| Lightning | 8 |
+
 ### CLI
 
 ```bash
