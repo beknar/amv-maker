@@ -23,12 +23,12 @@ class AMVMakerApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("AMV Maker")
-        self.geometry("720x950")
+        self.geometry("720x1020")
         self.resizable(False, False)
         self.configure(bg="#1a1a2e")
 
         self._image_path = tk.StringVar()
-        self._audio_path = tk.StringVar()
+        self._audio_paths: list[str] = []
         default_output = str(Path.home() / "Videos" / "amv_output.mp4")
         self._output_path = tk.StringVar(value=default_output)
         self._visualizer = tk.StringVar(value=VISUALIZER_TYPES[0])
@@ -63,12 +63,26 @@ class AMVMakerApp(tk.Tk):
 
         self._file_row(inp, "Image:", self._image_path, self._browse_image,
                        [("Images", "*.png *.jpg *.jpeg *.bmp *.gif *.apng *.mp4 *.avi *.mov *.mkv *.webm")])
-        self._file_row(inp, "Audio:", self._audio_path, self._browse_audio,
-                       [("Audio", "*.mp3 *.wav *.aac *.ogg *.flac")])
 
         # thumbnail preview
         self._thumb_label = tk.Label(inp, bg="#1a1a2e", width=20, height=6)
-        self._thumb_label.grid(row=2, column=0, columnspan=3, pady=(5, 0))
+        self._thumb_label.grid(row=1, column=0, columnspan=3, pady=(5, 0))
+
+        # ── audio playlist ──
+        aud = ttk.LabelFrame(self, text="  Audio Tracks (in order)  ", padding=8)
+        aud.pack(fill=tk.X, padx=10, pady=(5, 5))
+
+        self._audio_listbox = tk.Listbox(aud, height=4, bg="#2a2a4e", fg="#e0e0e0",
+                                         selectmode=tk.SINGLE, activestyle="none")
+        self._audio_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+
+        aud_btns = tk.Frame(aud, bg="#1a1a2e")
+        aud_btns.pack(side=tk.LEFT, fill=tk.Y)
+
+        ttk.Button(aud_btns, text="Add", width=8, command=self._add_audio).pack(pady=2)
+        ttk.Button(aud_btns, text="Remove", width=8, command=self._remove_audio).pack(pady=2)
+        ttk.Button(aud_btns, text="Move Up", width=8, command=self._move_audio_up).pack(pady=2)
+        ttk.Button(aud_btns, text="Move Down", width=8, command=self._move_audio_down).pack(pady=2)
 
         # ── settings ──
         cfg = ttk.LabelFrame(self, text="  Settings  ", padding=8)
@@ -160,13 +174,47 @@ class AMVMakerApp(tk.Tk):
             self._image_path.set(path)
             self._show_thumbnail(path)
 
-    def _browse_audio(self):
-        path = filedialog.askopenfilename(
-            title="Select Audio",
+    def _add_audio(self):
+        paths = filedialog.askopenfilenames(
+            title="Select Audio Track(s)",
             filetypes=[("Audio", "*.mp3 *.wav *.aac *.ogg *.flac"), ("All", "*.*")]
         )
-        if path:
-            self._audio_path.set(path)
+        for path in paths:
+            self._audio_paths.append(path)
+            self._audio_listbox.insert(tk.END, Path(path).name)
+
+    def _remove_audio(self):
+        sel = self._audio_listbox.curselection()
+        if sel:
+            idx = sel[0]
+            self._audio_paths.pop(idx)
+            self._audio_listbox.delete(idx)
+
+    def _move_audio_up(self):
+        sel = self._audio_listbox.curselection()
+        if not sel or sel[0] == 0:
+            return
+        idx = sel[0]
+        # swap in list
+        self._audio_paths[idx - 1], self._audio_paths[idx] = \
+            self._audio_paths[idx], self._audio_paths[idx - 1]
+        # swap in listbox
+        text = self._audio_listbox.get(idx)
+        self._audio_listbox.delete(idx)
+        self._audio_listbox.insert(idx - 1, text)
+        self._audio_listbox.selection_set(idx - 1)
+
+    def _move_audio_down(self):
+        sel = self._audio_listbox.curselection()
+        if not sel or sel[0] >= len(self._audio_paths) - 1:
+            return
+        idx = sel[0]
+        self._audio_paths[idx], self._audio_paths[idx + 1] = \
+            self._audio_paths[idx + 1], self._audio_paths[idx]
+        text = self._audio_listbox.get(idx)
+        self._audio_listbox.delete(idx)
+        self._audio_listbox.insert(idx + 1, text)
+        self._audio_listbox.selection_set(idx + 1)
 
     def _pick_color(self):
         initial = "#%02x%02x%02x" % self._vis_color
@@ -210,15 +258,18 @@ class AMVMakerApp(tk.Tk):
 
     def _start_render(self):
         img = self._image_path.get()
-        aud = self._audio_path.get()
         out = self._output_path.get()
 
         if not img or not Path(img).exists():
             messagebox.showerror("Error", "Please select a valid image file.")
             return
-        if not aud or not Path(aud).exists():
-            messagebox.showerror("Error", "Please select a valid audio file.")
+        if not self._audio_paths:
+            messagebox.showerror("Error", "Please add at least one audio track.")
             return
+        for aud in self._audio_paths:
+            if not Path(aud).exists():
+                messagebox.showerror("Error", f"Audio file not found:\n{aud}")
+                return
         if not out:
             messagebox.showerror("Error", "Please specify an output file path.")
             return
@@ -231,6 +282,7 @@ class AMVMakerApp(tk.Tk):
         self._status.set("Rendering… 0%")
         self._progress_var.set(0)
 
+        aud = self._audio_paths if len(self._audio_paths) > 1 else self._audio_paths[0]
         params = dict(
             image_path=img,
             audio_path=aud,
@@ -254,7 +306,7 @@ class AMVMakerApp(tk.Tk):
                 self._queue.put(("progress", pct))
 
             render_video(**params, progress_callback=on_progress)
-            self._queue.put(("done", params["output_path"], params["audio_path"]))
+            self._queue.put(("done", params["output_path"]))
         except Exception as e:
             self._queue.put(("error", str(e)))
 
@@ -263,7 +315,7 @@ class AMVMakerApp(tk.Tk):
             while True:
                 msg = self._queue.get_nowait()
                 if msg[0] == "done":
-                    self._on_render_done(msg[1], msg[2])
+                    self._on_render_done(msg[1])
                     return
                 elif msg[0] == "error":
                     self._on_render_error(msg[1])
@@ -277,15 +329,16 @@ class AMVMakerApp(tk.Tk):
         if self._rendering:
             self.after(100, self._poll_render)
 
-    def _on_render_done(self, video_path: str, audio_path: str):
+    def _on_render_done(self, video_path: str):
         self._rendering = False
         self._progress_var.set(100)
         self.btn_render.configure(state=tk.NORMAL)
         self._status.set(f"Done! Saved to {video_path}")
 
-        # auto-load into player
+        # auto-load into player — use the MP4 itself as audio source
+        # (it has the concatenated audio embedded)
         try:
-            self.player.load(video_path, audio_path)
+            self.player.load(video_path, video_path)
         except Exception as e:
             messagebox.showwarning("Playback", f"Video saved but player failed:\n{e}")
 

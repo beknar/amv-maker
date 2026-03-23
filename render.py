@@ -15,6 +15,7 @@ Requires: moviepy, Pillow, numpy, librosa
 
 import argparse
 import math
+import os
 import random
 import sys
 from pathlib import Path
@@ -490,11 +491,34 @@ def _is_video_file(path: str) -> bool:
     return Path(path).suffix.lower() in VIDEO_EXTENSIONS
 
 
+# ── audio concatenation ─────────────────────────────────────────────────────
+
+def concatenate_audio_files(audio_paths: list[str], output_path: str) -> str:
+    """Concatenate multiple audio files into one WAV file.
+
+    Returns the path to the concatenated file.
+    """
+    import soundfile as sf
+
+    all_samples = []
+    target_sr = None
+
+    for path in audio_paths:
+        y, sr = librosa.load(path, sr=target_sr, mono=True)
+        if target_sr is None:
+            target_sr = sr
+        all_samples.append(y)
+
+    combined = np.concatenate(all_samples)
+    sf.write(output_path, combined, target_sr)
+    return output_path
+
+
 # ── public API ──────────────────────────────────────────────────────────────
 
 def render_video(
     image_path: str,
-    audio_path: str,
+    audio_path: str | list[str],
     output_path: str = "output.mp4",
     bar_count: int = BAR_COUNT,
     petal_count: int = NUM_PETALS,
@@ -508,10 +532,23 @@ def render_video(
     """Render an AMV and return the output file path.
 
     Args:
+        audio_path: single path or list of paths to concatenate in order.
         progress_callback: called with a float 0.0–1.0 representing progress.
     """
     if progress_callback:
         progress_callback(0.0)
+
+    # concatenate multiple audio files if needed
+    import tempfile
+    _temp_audio = None
+    if isinstance(audio_path, list):
+        if len(audio_path) == 1:
+            audio_path = audio_path[0]
+        else:
+            _temp_audio = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+            _temp_audio.close()
+            concatenate_audio_files(audio_path, _temp_audio.name)
+            audio_path = _temp_audio.name
 
     bar_data, audio_duration, y_samples, sr = analyse_audio(
         audio_path, bar_count, FPS
@@ -588,6 +625,13 @@ def render_video(
     if progress_callback:
         progress_callback(1.0)
 
+    # clean up temp concatenated audio file
+    if _temp_audio is not None:
+        try:
+            os.remove(_temp_audio.name)
+        except OSError:
+            pass
+
     return output_path
 
 
@@ -596,7 +640,8 @@ def render_video(
 def main():
     parser = argparse.ArgumentParser(description="AMV Maker — render a music video")
     parser.add_argument("--image", required=True, help="Path to background image")
-    parser.add_argument("--audio", required=True, help="Path to audio file")
+    parser.add_argument("--audio", required=True, nargs="+",
+                        help="Path(s) to audio file(s), concatenated in order")
     parser.add_argument("-o", "--output", default="output.mp4", help="Output video path")
     parser.add_argument("--bars", type=int, default=BAR_COUNT)
     parser.add_argument("--petals", type=int, default=NUM_PETALS)
@@ -607,13 +652,16 @@ def main():
     parser.add_argument("--visualizer", choices=VISUALIZER_TYPES, default="Bar Graph")
     args = parser.parse_args()
 
-    for p, label in [(args.image, "Image"), (args.audio, "Audio")]:
+    if not Path(args.image).exists():
+        sys.exit(f"Image not found: {args.image}")
+    for p in args.audio:
         if not Path(p).exists():
-            sys.exit(f"{label} not found: {p}")
+            sys.exit(f"Audio not found: {p}")
 
+    audio = args.audio if len(args.audio) > 1 else args.audio[0]
     render_video(
         image_path=args.image,
-        audio_path=args.audio,
+        audio_path=audio,
         output_path=args.output,
         bar_count=args.bars,
         petal_count=args.petals,
