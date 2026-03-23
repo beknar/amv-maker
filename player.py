@@ -5,6 +5,7 @@ and pygame.mixer for audio playback.
 Optimized for 30+ FPS playback.
 """
 
+import os
 import time
 import tkinter as tk
 
@@ -12,6 +13,10 @@ import cv2
 import numpy as np
 import pygame
 from PIL import Image, ImageTk
+
+# Suppress ffmpeg/cv2 decoder warnings (NAL unit errors on seek)
+os.environ["OPENCV_LOG_LEVEL"] = "SILENT"
+os.environ["OPENCV_FFMPEG_LOGLEVEL"] = "-8"  # AV_LOG_QUIET
 
 
 class VideoPlayer(tk.Frame):

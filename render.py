@@ -293,10 +293,8 @@ def draw_radial_visualizer(draw: ImageDraw.ImageDraw, amplitudes: np.ndarray,
     fill = _vis_rgba(color)
     cx, cy = WIDTH // 2, HEIGHT // 2
     n = len(amplitudes)
-    # inner radius + max bar length = 100% of screen height / 2
-    total_radius = HEIGHT * 0.5
-    inner_r = int(total_radius * 0.4)
-    max_bar_len = int(total_radius * 0.6)
+    inner_r = HEIGHT // 2  # inner radius spans full screen height
+    max_bar_len = int(inner_r * 0.5)  # bars extend beyond screen edge
     for i, amp in enumerate(amplitudes):
         angle = 2 * math.pi * i / n - math.pi / 2
         bar_len = inner_r + amp * max_bar_len
