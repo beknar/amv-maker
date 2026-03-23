@@ -289,12 +289,14 @@ def draw_oscilloscope(draw: ImageDraw.ImageDraw, waveform: np.ndarray,
 
 def draw_radial_visualizer(draw: ImageDraw.ImageDraw, amplitudes: np.ndarray,
                            color: tuple[int, int, int] = DEFAULT_VIS_COLOR):
-    """Bars arranged in a circle at the bottom-center."""
+    """Bars arranged in a circle at the center of the screen, 50% of height."""
     fill = _vis_rgba(color)
-    cx, cy = WIDTH // 2, VIS_BOTTOM_Y - 20
+    cx, cy = WIDTH // 2, HEIGHT // 2
     n = len(amplitudes)
-    inner_r = 60
-    max_bar_len = 120
+    # inner radius + max bar length = 50% of screen height / 2
+    total_radius = HEIGHT * 0.25  # half of 50% height
+    inner_r = int(total_radius * 0.4)
+    max_bar_len = int(total_radius * 0.6)
     for i, amp in enumerate(amplitudes):
         angle = 2 * math.pi * i / n - math.pi / 2
         bar_len = inner_r + amp * max_bar_len
