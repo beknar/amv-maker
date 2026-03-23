@@ -497,7 +497,7 @@ def build_renderer(bg_image, bar_data: np.ndarray,
         frame_idx = min(frame_idx, bar_data.shape[0] - 1)
         amplitudes = bar_data[frame_idx]
 
-        # select background segment based on track timing
+        # select background segment based on track timing, with crossfade
         seg_idx = 0
         seg_start = 0.0
         if track_durations:
@@ -510,13 +510,31 @@ def build_renderer(bg_image, bar_data: np.ndarray,
                 seg_idx = len(track_durations) - 1
                 seg_start = track_durations[-2] if len(track_durations) > 1 else 0.0
 
-        seg_frames, seg_fdur, seg_animated = bg_segments[min(seg_idx, len(bg_segments) - 1)]
-        if seg_animated:
-            local_t = t - seg_start
-            bg_idx = int(local_t / seg_fdur) % len(seg_frames)
-            img = seg_frames[bg_idx].copy()
-        else:
-            img = seg_frames[0].copy()
+        def _get_seg_frame(idx: int, time: float, start: float) -> Image.Image:
+            sf, sfd, sa = bg_segments[min(idx, len(bg_segments) - 1)]
+            if sa:
+                bi = int((time - start) / sfd) % len(sf)
+                return sf[bi].copy()
+            return sf[0].copy()
+
+        img = _get_seg_frame(seg_idx, t, seg_start)
+
+        # video crossfade between tracks
+        xfade_half = CROSSFADE_SECONDS / 2
+        if track_durations and len(bg_segments) > 1:
+            # check if we're near a track boundary
+            for i, end_t in enumerate(track_durations[:-1]):
+                if end_t - xfade_half <= t < end_t + xfade_half:
+                    # blend between track i and track i+1
+                    blend = (t - (end_t - xfade_half)) / CROSSFADE_SECONDS
+                    blend = max(0.0, min(1.0, blend))
+                    prev_start = track_durations[i - 1] if i > 0 else 0.0
+                    next_start = end_t
+                    img_out = _get_seg_frame(i, t, prev_start)
+                    img_in = _get_seg_frame(i + 1, t, next_start)
+                    img = Image.blend(img_out.convert("RGBA"),
+                                      img_in.convert("RGBA"), blend)
+                    break
         overlay = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
 
@@ -616,25 +634,62 @@ def _is_video_file(path: str) -> bool:
 
 # ── audio concatenation ─────────────────────────────────────────────────────
 
-def concatenate_audio_files(audio_paths: list[str], output_path: str) -> str:
-    """Concatenate multiple audio files into one WAV file.
+CROSSFADE_SECONDS = 3.0  # duration of audio/video crossfade between tracks
 
-    Returns the path to the concatenated file.
+
+def concatenate_audio_files(audio_paths: list[str], output_path: str,
+                            crossfade_s: float = CROSSFADE_SECONDS) -> tuple[str, list[float]]:
+    """Concatenate multiple audio files with crossfade into one WAV file.
+
+    Returns (output_path, track_end_times) where track_end_times are cumulative
+    seconds marking the midpoint of each crossfade (the switch point for video).
     """
     import soundfile as sf
 
-    all_samples = []
+    all_tracks = []
     target_sr = None
 
     for path in audio_paths:
         y, sr = librosa.load(path, sr=target_sr, mono=True)
         if target_sr is None:
             target_sr = sr
-        all_samples.append(y)
+        all_tracks.append(y)
 
-    combined = np.concatenate(all_samples)
+    if len(all_tracks) == 1:
+        sf.write(output_path, all_tracks[0], target_sr)
+        return output_path, [len(all_tracks[0]) / target_sr]
+
+    # crossfade: overlap the end of track N with the start of track N+1
+    xfade_samples = int(crossfade_s * target_sr)
+    track_end_times = []
+    combined = all_tracks[0].copy()
+
+    for i in range(1, len(all_tracks)):
+        xfade = min(xfade_samples, len(combined), len(all_tracks[i]))
+
+        if xfade > 0:
+            # fade out the tail of the current combined audio
+            fade_out = np.linspace(1.0, 0.0, xfade, dtype=np.float32)
+            # fade in the head of the next track
+            fade_in = np.linspace(0.0, 1.0, xfade, dtype=np.float32)
+
+            # the overlap region: blend both
+            overlap = combined[-xfade:] * fade_out + all_tracks[i][:xfade] * fade_in
+            combined[-xfade:] = overlap
+            # append the rest of the next track (after the crossfade region)
+            combined = np.concatenate([combined, all_tracks[i][xfade:]])
+        else:
+            combined = np.concatenate([combined, all_tracks[i]])
+
+        # track switch point is at the midpoint of the crossfade
+        track_end_times.append(len(combined) / target_sr -
+                               len(all_tracks[i][xfade:]) / target_sr -
+                               xfade / target_sr / 2)
+
+    track_end_times.append(len(combined) / target_sr)
+
     sf.write(output_path, combined, target_sr)
-    return output_path
+    return output_path, track_end_times
 
 
 # ── public API ──────────────────────────────────────────────────────────────
@@ -668,6 +723,7 @@ def render_video(
     import tempfile
     _temp_audio = None
     _original_audio_paths = None
+    _crossfade_track_times = None
     if isinstance(audio_path, list):
         _original_audio_paths = list(audio_path)
         if len(audio_path) == 1:
@@ -675,7 +731,9 @@ def render_video(
         else:
             _temp_audio = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
             _temp_audio.close()
-            concatenate_audio_files(audio_path, _temp_audio.name)
+            _, _crossfade_track_times = concatenate_audio_files(
+                audio_path, _temp_audio.name
+            )
             audio_path = _temp_audio.name
 
     bar_data, audio_duration, y_samples, sr = analyse_audio(
@@ -696,21 +754,24 @@ def render_video(
     original_audio_paths = _original_audio_paths if '_original_audio_paths' in dir() else None
 
     if len(image_paths) > 1 and _original_audio_paths is not None:
-        # multiple images paired with audio tracks — compute per-track durations
+        # multiple images paired with audio tracks
         track_backgrounds = []
-        track_durations_list = []
-        cumulative = 0.0
-        for i, img_p in enumerate(image_paths):
+        for img_p in image_paths:
             if _is_video_file(img_p):
                 f, fd = load_video_frames(img_p)
                 track_backgrounds.append((f, fd))
             else:
                 track_backgrounds.append(Image.open(img_p))
-            # get duration of corresponding audio track
-            if i < len(_original_audio_paths):
+        # use crossfade-aware track times if available, else compute from files
+        if _crossfade_track_times:
+            track_durations_list = _crossfade_track_times
+        else:
+            track_durations_list = []
+            cumulative = 0.0
+            for i in range(len(_original_audio_paths)):
                 y_trk, sr_trk = librosa.load(_original_audio_paths[i], sr=None, mono=True)
                 cumulative += len(y_trk) / sr_trk
-            track_durations_list.append(cumulative)
+                track_durations_list.append(cumulative)
     else:
         p = image_paths[0]
         if _is_video_file(p):
