@@ -6,6 +6,8 @@ Optimized for 30+ FPS playback.
 """
 
 import os
+import subprocess
+import tempfile
 import time
 import tkinter as tk
 
@@ -37,6 +39,7 @@ class VideoPlayer(tk.Frame):
         self._audio_path: str | None = None
         self._after_id: str | None = None
         self._photo: ImageTk.PhotoImage | None = None
+        self._temp_audio: str | None = None  # extracted audio for playback
 
         # FPS tracking
         self._display_fps: float = 0.0
@@ -82,7 +85,27 @@ class VideoPlayer(tk.Frame):
         if not pygame.mixer.get_init():
             pygame.mixer.init()
 
-    def load(self, video_path: str, audio_path: str):
+    def _extract_audio(self, video_path: str) -> str | None:
+        """Extract audio from video to a temp WAV file for pygame playback."""
+        try:
+            tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+            tmp.close()
+            # use ffmpeg (bundled via imageio-ffmpeg) to extract audio
+            from imageio_ffmpeg import get_ffmpeg_exe
+            ffmpeg = get_ffmpeg_exe()
+            subprocess.run(
+                [ffmpeg, "-y", "-i", video_path, "-vn", "-acodec", "pcm_s16le",
+                 "-ar", "44100", "-ac", "2", tmp.name],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            if os.path.getsize(tmp.name) > 0:
+                return tmp.name
+            os.remove(tmp.name)
+        except Exception:
+            pass
+        return None
+
+    def load(self, video_path: str, audio_path: str | None = None):
         """Load a video file for playback."""
         self.stop()
 
@@ -93,7 +116,11 @@ class VideoPlayer(tk.Frame):
         self._fps = self._cap.get(cv2.CAP_PROP_FPS) or 30.0
         self._total_frames = int(self._cap.get(cv2.CAP_PROP_FRAME_COUNT))
         self._duration = self._total_frames / self._fps
-        self._audio_path = audio_path
+
+        # extract audio from the MP4 for pygame playback
+        self._cleanup_temp_audio()
+        self._temp_audio = self._extract_audio(video_path)
+        self._audio_path = self._temp_audio
 
         self.seek_slider.configure(to=self._duration)
 
@@ -279,11 +306,24 @@ class VideoPlayer(tk.Frame):
             pygame.mixer.music.play(start=t)
         self._update_time(t)
 
+    def _cleanup_temp_audio(self):
+        if self._temp_audio:
+            try:
+                pygame.mixer.music.unload()
+            except Exception:
+                pass
+            try:
+                os.remove(self._temp_audio)
+            except OSError:
+                pass
+            self._temp_audio = None
+
     def destroy(self):
         self.stop()
         if self._cap:
             self._cap.release()
             self._cap = None
+        self._cleanup_temp_audio()
         try:
             pygame.mixer.quit()
         except Exception:

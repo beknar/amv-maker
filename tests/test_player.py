@@ -87,14 +87,15 @@ class TestPlayerLoad:
         mock_cv2.resize.return_value = np.zeros((400, 640, 3), dtype=np.uint8)
         mock_cv2.cvtColor.return_value = np.zeros((400, 640, 3), dtype=np.uint8)
 
-        # Patch _display_cv_frame to avoid tkinter ImageTk issues in tests
-        with patch.object(player, "_display_cv_frame"):
-            player.load("test.mp4", "audio.mp3")
+        # Patch _display_cv_frame and _extract_audio to avoid tkinter/ffmpeg issues
+        with patch.object(player, "_display_cv_frame"), \
+             patch.object(player, "_extract_audio", return_value="/tmp/audio.wav"):
+            player.load("test.mp4")
 
         assert player._fps == 24.0
         assert player._total_frames == 240
         assert player._duration == 10.0
-        assert player._audio_path == "audio.mp3"
+        assert player._audio_path == "/tmp/audio.wav"
 
 
 # ── play ────────────────────────────────────────────────────────────────────
