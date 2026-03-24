@@ -23,7 +23,7 @@ class AMVMakerApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("AMV Maker")
-        self.geometry("720x1000")
+        self.geometry("750x1050")
         self.resizable(False, False)
         self.configure(bg="#1a1a2e")
 
@@ -83,15 +83,16 @@ class AMVMakerApp(tk.Tk):
         ttk.Button(trk_btns, text="Move Up", width=10, command=self._move_track_up).pack(pady=2)
         ttk.Button(trk_btns, text="Move Down", width=10, command=self._move_track_down).pack(pady=2)
 
-        # ── settings ──
+        # ── settings (two-column: visualizers left, params right) ──
         cfg = ttk.LabelFrame(self, text="  Settings  ", padding=8)
         cfg.pack(fill=tk.X, padx=10, pady=5)
 
-        ttk.Label(cfg, text="Visualizers:").grid(row=0, column=0, sticky=tk.NW, pady=2)
-        vis_frame = tk.Frame(cfg, bg="#1a1a2e")
-        vis_frame.grid(row=0, column=1, columnspan=3, sticky=tk.W, padx=5)
+        # left: visualizer checkbuttons with color swatches
+        left = tk.Frame(cfg, bg="#1a1a2e")
+        left.pack(side=tk.LEFT, anchor=tk.NW, padx=(0, 15))
+        ttk.Label(left, text="Visualizers:").pack(anchor=tk.W)
         for vt in VISUALIZER_TYPES:
-            row_f = tk.Frame(vis_frame, bg="#1a1a2e")
+            row_f = tk.Frame(left, bg="#1a1a2e")
             row_f.pack(anchor=tk.W)
             tk.Checkbutton(row_f, text=vt, variable=self._vis_checks[vt],
                            bg="#1a1a2e", fg="#e0e0e0", selectcolor="#2a2a4e",
@@ -104,43 +105,48 @@ class AMVMakerApp(tk.Tk):
             self._vis_swatches[vt] = swatch
             swatch.bind("<Button-1>", lambda e, name=vt: self._pick_vis_color(name))
 
-        ttk.Label(cfg, text="Bars:").grid(row=1, column=0, sticky=tk.W, pady=2)
-        ttk.Spinbox(cfg, from_=10, to=80, textvariable=self._bar_count, width=8).grid(
-            row=1, column=1, sticky=tk.W, padx=5)
+        # right: all other settings
+        right = tk.Frame(cfg, bg="#1a1a2e")
+        right.pack(side=tk.LEFT, anchor=tk.NW, fill=tk.X, expand=True)
 
-        ttk.Label(cfg, text="Petals:").grid(row=2, column=0, sticky=tk.W, pady=2)
-        ttk.Spinbox(cfg, from_=0, to=100, textvariable=self._petal_count, width=8).grid(
-            row=2, column=1, sticky=tk.W, padx=5)
+        r = 0
+        for label, var, extra in [
+            ("Bars:", self._bar_count, None),
+            ("Petals:", self._petal_count, None),
+            ("Rainfall:", self._raindrop_count, "(0 = off)"),
+            ("Lightning:", self._lightning_intensity, "(0-10)"),
+        ]:
+            ttk.Label(right, text=label).grid(row=r, column=0, sticky=tk.W, pady=1)
+            ttk.Spinbox(right, from_=0, to=500, textvariable=var, width=8).grid(
+                row=r, column=1, sticky=tk.W, padx=5)
+            if extra:
+                ttk.Label(right, text=extra).grid(row=r, column=2, sticky=tk.W)
+            r += 1
 
-        ttk.Label(cfg, text="Rainfall:").grid(row=3, column=0, sticky=tk.W, pady=2)
-        ttk.Spinbox(cfg, from_=0, to=500, textvariable=self._raindrop_count, width=8).grid(
-            row=3, column=1, sticky=tk.W, padx=5)
-        ttk.Label(cfg, text="(0 = off)").grid(row=3, column=2, sticky=tk.W)
-
-        ttk.Label(cfg, text="Lightning:").grid(row=4, column=0, sticky=tk.W, pady=2)
-        ttk.Spinbox(cfg, from_=0, to=10, textvariable=self._lightning_intensity, width=8).grid(
-            row=4, column=1, sticky=tk.W, padx=5)
-        ttk.Label(cfg, text="(0 = off, 1-10)").grid(row=4, column=2, sticky=tk.W)
-
-        ttk.Label(cfg, text="Hearts:").grid(row=5, column=0, sticky=tk.W, pady=2)
-        ttk.Spinbox(cfg, from_=0, to=20, textvariable=self._heart_intensity, width=8).grid(
-            row=5, column=1, sticky=tk.W, padx=5)
+        ttk.Label(right, text="Hearts:").grid(row=r, column=0, sticky=tk.W, pady=1)
+        ttk.Spinbox(right, from_=0, to=20, textvariable=self._heart_intensity, width=8).grid(
+            row=r, column=1, sticky=tk.W, padx=5)
         self._heart_swatch = tk.Label(
-            cfg, bg="#ff5096", width=3, relief=tk.RAISED, cursor="hand2"
+            right, bg="#ff5096", width=3, relief=tk.RAISED, cursor="hand2"
         )
-        self._heart_swatch.grid(row=5, column=2, sticky=tk.W, padx=5)
+        self._heart_swatch.grid(row=r, column=2, sticky=tk.W, padx=5)
         self._heart_swatch.bind("<Button-1>", lambda e: self._pick_heart_color())
+        r += 1
 
-        ttk.Label(cfg, text="Duration (s):").grid(row=6, column=0, sticky=tk.W, pady=2)
-        ttk.Entry(cfg, textvariable=self._duration, width=10).grid(
-            row=6, column=1, sticky=tk.W, padx=5)
-        ttk.Label(cfg, text="(blank = full track)").grid(row=6, column=2, sticky=tk.W)
+        ttk.Label(right, text="Duration:").grid(row=r, column=0, sticky=tk.W, pady=1)
+        ttk.Entry(right, textvariable=self._duration, width=8).grid(
+            row=r, column=1, sticky=tk.W, padx=5)
+        ttk.Label(right, text="(blank=full)").grid(row=r, column=2, sticky=tk.W)
+        r += 1
 
-        ttk.Label(cfg, text="Output:").grid(row=7, column=0, sticky=tk.W, pady=2)
-        ttk.Entry(cfg, textvariable=self._output_path, width=45).grid(
-            row=7, column=1, columnspan=2, sticky=tk.W, padx=5)
-        ttk.Button(cfg, text="Browse…", command=self._browse_output).grid(
-            row=7, column=3, padx=5)
+        # output path — full width below
+        out_frame = tk.Frame(self, bg="#1a1a2e")
+        out_frame.pack(fill=tk.X, padx=10, pady=(0, 5))
+        ttk.Label(out_frame, text="Output:").pack(side=tk.LEFT)
+        ttk.Entry(out_frame, textvariable=self._output_path, width=50).pack(
+            side=tk.LEFT, padx=5)
+        ttk.Button(out_frame, text="Browse…", command=self._browse_output).pack(
+            side=tk.LEFT)
 
         # ── render ──
         ren = tk.Frame(self, bg="#1a1a2e")
