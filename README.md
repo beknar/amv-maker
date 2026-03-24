@@ -1,8 +1,8 @@
 # AMV Maker
 
-Generate anime music videos in the style of [Poisonpop Candy](https://www.youtube.com/channel/UC8qGpw8GUxcQZftXQeFavXw) — anime images composited with audio-reactive visualizers, decorative effects, and rendered to MP4.
+Generate anime music videos in the style of Poisonpop Candy— anime images composited with audio-reactive visualizers, decorative effects, and rendered to MP4.
 
-![Reference screenshot](image.png)
+![alt text](image-1.png)
 
 ## Features
 
