@@ -1,83 +1,75 @@
 # Anime Music Video Maker — CLAUDE.md
 
-Project summary for Claude Code / Claude CLI: a concise, machine-friendly description
-of the AMV (Anime Music Video) Maker project in this directory. Use this file as the
-primary context when asking Claude to analyze, modify, or generate code for the project.
-
 ## Project Overview
 
-The AMV Maker produces short music videos in the style of the Poisonpop Candy / Alya
-YouTube channels: a central anime image (static or lightly animated) with a waveform
-visualizer and optional decorative particles or petals. The visualizer may be a stacked
-transparent-bar graph, circular/radial plot, oscilloscope trace, or particle/object-based
-visualization.
+AMV Maker generates music videos in the style of the Poisonpop Candy / Alya YouTube
+channels: anime images (static, animated GIF/APNG, or video) composited with audio-reactive
+visualizers, decorative effects, and encoded to MP4. Supports multi-track playlists with
+per-track images and audio crossfading.
 
-## Goals
+## Architecture
 
-- Take one or more user-supplied images (static or animated) and an audio track.
-- Generate a rendered video (MP4 preferred) at typical resolutions (example: 1280×800).
-- Support multiple visualizer styles and optional decorative animation layers.
+Six source modules, a GUI, and a video player:
+
+| File | Purpose |
+|------|---------|
+| `constants.py` | Shared defaults (resolution, FPS, effect limits) |
+| `effects.py` | Animation classes: Petal, Raindrop, Heart, Particle |
+| `visualizers.py` | Draw functions: bar graph, oscilloscope, radial, lightning |
+| `audio.py` | Audio analysis (mel spectrogram), beat detection, crossfade concatenation |
+| `compositor.py` | `build_renderer()` — frame composition, background switching, crossfade |
+| `render.py` | `render_video()` public API, CLI entry point, encoding pipeline |
+| `gui.py` | tkinter GUI with track playlist, settings, color pickers, render controls |
+| `player.py` | Embedded video player (OpenCV frames + pygame audio + tkinter canvas) |
+
+## Key Design Decisions
+
+- **PIL/Pillow** renders each frame as RGBA overlays composited onto the background.
+  No GPU rendering — all CPU-based via numpy/PIL.
+- **MoviePy 2.x** drives the encoding pipeline via `VideoClip(make_frame, duration)`.
+- **librosa** provides mel spectrograms (dB-scaled) for perceptually balanced visualizers
+  and onset detection for beat-synced lightning.
+- **pygame.mixer** handles audio playback in the preview player (audio extracted from
+  rendered MP4 to temp WAV via ffmpeg).
+- **OpenCV** reads video frames for preview playback and extracts frames from MP4 backgrounds.
+- Multiple visualizers can be active simultaneously, each with its own color.
+- Multi-track: images paired with audio tracks; audio crossfades (3s) with video blending.
 
 ## Inputs
 
-- Static image (png/jpg) of an anime scene (typically a character/portrait).
-- Optional animated image (APNG / animated sprites / short video clip).
-- Music track (MP3/WAV/AAC) matching the style of Poisonpop Candy (kawaii phonk / candies).
-- User choice of visualizer type and simple parameters (colors, amplitude thresholds).
+- Background: static image (PNG/JPG), animated GIF/APNG, or video (MP4/AVI/MOV/MKV/WebM)
+- Audio: MP3, WAV, AAC, OGG, FLAC — single or multiple tracks
+- Multiple images paired 1:1 with audio tracks for per-song backgrounds
 
 ## Outputs
 
-- Final rendered video file (MP4 recommended, WMV optional) at resolutions such as 1280×800.
+- MP4 (H.264 + AAC) at 1280x800, 30 FPS
+- faststart enabled, keyframe every 1s, no B-frames (clean seeking)
 
-## Tech Stack / Dependencies
+## Effects & Visualizers
 
-- Python 3.12 (or latest stable 3.x)
-- moviepy / ffmpeg-python (rendering, composition, encoding; requires ffmpeg installed)
-- FFmpeg binary available on PATH or specified to the toolchain
-- Pillow (PIL) for image processing and sprite manipulation
-- Optional: numpy, scipy, librosa, soundfile for audio analysis and DSP
+- **Visualizers** (1-4 simultaneous): Bar Graph, Oscilloscope, Radial, Particle
+- **Effects**: Cherry blossom petals, rainfall, lightning bolts (beat-synced), hollow hearts
+- All effects have intensity/count controls; visualizers and hearts have per-effect color pickers
 
-Minimal install suggestion (developer environment):
+## Dependencies
+
+Python 3.12+, moviepy, Pillow, numpy, soundfile, librosa, opencv-python, pygame.
+FFmpeg required (bundled via imageio-ffmpeg).
+
+## Testing
+
+79 unit tests in `tests/` via pytest. Tests cover all effect classes, visualizer draw
+functions, audio analysis, build_renderer, render_video (mocked), and the video player.
 
 ```bash
-python -m venv venv
-venv\Scripts\activate.bat   # Windows
-pip install moviepy pillow numpy soundfile
+python -m pytest tests/ -v
 ```
 
-## Visualizer Types (examples)
+## Running
 
-- Bar graph (stacked semi-transparent boxes that add/remove with amplitude)
-- Oscilloscope / waveform trace (line plot of the waveform)
-- Circular / radial visualizer (bars or blobs arranged radially)
-- Particle / object-based visualizers (spawned particles that react to energy)
-
-## Example Workflow
-
-1. User places media (image + audio) in an `inputs/` folder or provides paths.
-2. Run a render script that: analyzes audio amplitude/FFT, produces per-frame visualizer
-   overlays, composes overlays with base image(s), writes output frames or pipes to ffmpeg,
-   and encodes final MP4.
-
-## Notes for Claude Code / CLI
-
-- This file is the canonical project summary to provide to Claude when requesting code
-  changes, feature additions, or issue triage.
-- For generation tasks, prefer prompts that specify: target resolution, visualizer type,
-  desired duration, and whether the image is animated.
-
-## Asset & Source Links
-
-- Target reference channel: https://www.youtube.com/channel/UC8qGpw8GUxcQZftXQeFavXw
-
-## Next Steps (developer)
-
-- Add a `requirements.txt` listing chosen libs if not present.
-- Add an `inputs/` folder with example image + audio for tests.
-- Create a small `render.py` proof-of-concept using `moviepy` and `pydub`/`soundfile`.
-
----
-
-If you want, I can now:
-- create `requirements.txt` and a starter `render.py` script, or
-- generate a Claude-ready prompt to implement a specific visualizer (bar, oscilloscope, radial).
+```bash
+python -m venv venv && venv\Scripts\activate.bat && pip install -r requirements.txt
+python gui.py          # GUI
+python render.py --help  # CLI
+```
