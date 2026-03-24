@@ -459,7 +459,7 @@ def _load_bg_source(bg_image) -> tuple[list[Image.Image], float]:
 
 
 def build_renderer(bg_image, bar_data: np.ndarray,
-                   petals: list[Petal], visualizer: str = "Bar Graph",
+                   petals: list[Petal], visualizer: str | list[str] = "Bar Graph",
                    waveforms: list | None = None, particles: list | None = None,
                    raindrops: list[Raindrop] | None = None,
                    vis_color: tuple[int, int, int] = DEFAULT_VIS_COLOR,
@@ -538,23 +538,25 @@ def build_renderer(bg_image, bar_data: np.ndarray,
         overlay = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
 
-        # draw chosen visualizer
-        if visualizer == "Oscilloscope" and waveforms:
-            wf_idx = min(frame_idx, len(waveforms) - 1)
-            draw_oscilloscope(draw, waveforms[wf_idx], vis_color)
-        elif visualizer == "Radial":
-            draw_radial_visualizer(draw, amplitudes, vis_color)
-        elif visualizer == "Particle" and particles is not None:
-            dt = 1.0 / FPS
-            energy = float(amplitudes.mean())
-            for p in particles:
-                if p.life <= 0 and energy > 0.3:
-                    p.reset(energy)
-            for p in particles:
-                p.update(dt)
-                p.draw(overlay, vis_color)
-        else:
-            draw_bar_visualizer(draw, amplitudes, vis_color)
+        # draw selected visualizers (one or more)
+        vis_list = visualizer if isinstance(visualizer, list) else [visualizer]
+        for vis in vis_list:
+            if vis == "Bar Graph":
+                draw_bar_visualizer(draw, amplitudes, vis_color)
+            elif vis == "Oscilloscope" and waveforms:
+                wf_idx = min(frame_idx, len(waveforms) - 1)
+                draw_oscilloscope(draw, waveforms[wf_idx], vis_color)
+            elif vis == "Radial":
+                draw_radial_visualizer(draw, amplitudes, vis_color)
+            elif vis == "Particle" and particles is not None:
+                _dt = 1.0 / FPS
+                energy = float(amplitudes.mean())
+                for p in particles:
+                    if p.life <= 0 and energy > 0.3:
+                        p.reset(energy)
+                for p in particles:
+                    p.update(_dt)
+                    p.draw(overlay, vis_color)
 
         dt = 1.0 / FPS
 
@@ -705,7 +707,7 @@ def render_video(
     heart_intensity: int = HEART_INTENSITY,
     heart_color: tuple[int, int, int] = HEART_COLOR,
     duration: float | None = None,
-    visualizer: str = "Bar Graph",
+    visualizer: str | list[str] = "Bar Graph",
     vis_color: tuple[int, int, int] = DEFAULT_VIS_COLOR,
     progress_callback: Callable[[float], None] | None = None,
 ) -> str:
@@ -782,11 +784,12 @@ def render_video(
 
     petals = [Petal() for _ in range(petal_count)]
 
+    vis_list = visualizer if isinstance(visualizer, list) else [visualizer]
     waveforms = None
     particles = None
-    if visualizer == "Oscilloscope":
+    if "Oscilloscope" in vis_list:
         waveforms = analyse_audio_waveform(y_samples, sr, FPS)
-    elif visualizer == "Particle":
+    if "Particle" in vis_list:
         particles = [Particle() for _ in range(80)]
 
     raindrops = [Raindrop() for _ in range(raindrop_count)] if raindrop_count > 0 else None
@@ -868,7 +871,9 @@ def main():
     parser.add_argument("--lightning", type=int, default=LIGHTNING_INTENSITY,
                         help="Lightning intensity 0-10 (0=off)")
     parser.add_argument("--duration", type=float, default=None)
-    parser.add_argument("--visualizer", choices=VISUALIZER_TYPES, default="Bar Graph")
+    parser.add_argument("--visualizer", choices=VISUALIZER_TYPES, nargs="+",
+                        default=["Bar Graph"],
+                        help="Visualizer(s) to show (1-4)")
     args = parser.parse_args()
 
     if not Path(args.image).exists():

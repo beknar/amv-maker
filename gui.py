@@ -31,7 +31,9 @@ class AMVMakerApp(tk.Tk):
         self._audio_paths: list[str] = []
         default_output = str(Path.home() / "Videos" / "amv_output.mp4")
         self._output_path = tk.StringVar(value=default_output)
-        self._visualizer = tk.StringVar(value=VISUALIZER_TYPES[0])
+        self._vis_checks: dict[str, tk.BooleanVar] = {}
+        for vt in VISUALIZER_TYPES:
+            self._vis_checks[vt] = tk.BooleanVar(value=(vt == "Bar Graph"))
         self._bar_count = tk.IntVar(value=40)
         self._petal_count = tk.IntVar(value=25)
         self._raindrop_count = tk.IntVar(value=0)
@@ -77,18 +79,20 @@ class AMVMakerApp(tk.Tk):
         cfg = ttk.LabelFrame(self, text="  Settings  ", padding=8)
         cfg.pack(fill=tk.X, padx=10, pady=5)
 
-        ttk.Label(cfg, text="Visualizer:").grid(row=0, column=0, sticky=tk.W, pady=2)
-        vis_combo = ttk.Combobox(
-            cfg, textvariable=self._visualizer,
-            values=VISUALIZER_TYPES, state="readonly", width=20
-        )
-        vis_combo.grid(row=0, column=1, sticky=tk.W, padx=5)
+        ttk.Label(cfg, text="Visualizers:").grid(row=0, column=0, sticky=tk.NW, pady=2)
+        vis_frame = tk.Frame(cfg, bg="#1a1a2e")
+        vis_frame.grid(row=0, column=1, sticky=tk.W, padx=5)
+        for vt in VISUALIZER_TYPES:
+            tk.Checkbutton(vis_frame, text=vt, variable=self._vis_checks[vt],
+                           bg="#1a1a2e", fg="#e0e0e0", selectcolor="#2a2a4e",
+                           activebackground="#1a1a2e", activeforeground="#e0e0e0"
+                           ).pack(anchor=tk.W)
 
-        ttk.Label(cfg, text="Color:").grid(row=0, column=2, sticky=tk.W, padx=(15, 0), pady=2)
+        ttk.Label(cfg, text="Color:").grid(row=0, column=2, sticky=tk.NW, padx=(15, 0), pady=2)
         self._color_swatch = tk.Label(
             cfg, bg="#c850c8", width=3, relief=tk.RAISED, cursor="hand2"
         )
-        self._color_swatch.grid(row=0, column=3, sticky=tk.W, padx=5)
+        self._color_swatch.grid(row=0, column=3, sticky=tk.NW, padx=5, pady=2)
         self._color_swatch.bind("<Button-1>", lambda e: self._pick_color())
 
         ttk.Label(cfg, text="Bars:").grid(row=1, column=0, sticky=tk.W, pady=2)
@@ -246,6 +250,10 @@ class AMVMakerApp(tk.Tk):
             if not Path(aud).exists():
                 messagebox.showerror("Error", f"Audio file not found:\n{aud}")
                 return
+        selected_vis = [vt for vt, var in self._vis_checks.items() if var.get()]
+        if not selected_vis:
+            messagebox.showerror("Error", "Please select at least one visualizer.")
+            return
         if not out:
             messagebox.showerror("Error", "Please specify an output file path.")
             return
@@ -271,7 +279,7 @@ class AMVMakerApp(tk.Tk):
             heart_intensity=self._heart_intensity.get(),
             heart_color=self._heart_color,
             duration=duration,
-            visualizer=self._visualizer.get(),
+            visualizer=[vt for vt, var in self._vis_checks.items() if var.get()],
             vis_color=self._vis_color,
         )
 
