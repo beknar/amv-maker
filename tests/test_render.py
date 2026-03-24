@@ -18,7 +18,7 @@ from constants import (
 from effects import Petal, Raindrop, Particle, _vis_rgba
 from visualizers import draw_bar_visualizer, draw_oscilloscope, draw_radial_visualizer
 from audio import analyse_audio_waveform
-from render import build_renderer
+from compositor import build_renderer
 
 
 # ── fixtures ────────────────────────────────────────────────────────────────
