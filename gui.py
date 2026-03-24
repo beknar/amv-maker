@@ -32,15 +32,23 @@ class AMVMakerApp(tk.Tk):
         default_output = str(Path.home() / "Videos" / "amv_output.mp4")
         self._output_path = tk.StringVar(value=default_output)
         self._vis_checks: dict[str, tk.BooleanVar] = {}
+        self._vis_colors: dict[str, tuple[int, int, int]] = {}
+        default_colors = {
+            "Bar Graph": (200, 80, 200),
+            "Oscilloscope": (0, 200, 255),
+            "Radial": (255, 100, 180),
+            "Particle": (220, 100, 220),
+        }
         for vt in VISUALIZER_TYPES:
             self._vis_checks[vt] = tk.BooleanVar(value=(vt == "Bar Graph"))
+            self._vis_colors[vt] = default_colors.get(vt, (200, 80, 200))
+        self._vis_swatches: dict[str, tk.Label] = {}
         self._bar_count = tk.IntVar(value=40)
         self._petal_count = tk.IntVar(value=25)
         self._raindrop_count = tk.IntVar(value=0)
         self._lightning_intensity = tk.IntVar(value=0)
         self._heart_intensity = tk.IntVar(value=0)
         self._heart_color: tuple[int, int, int] = (255, 80, 150)
-        self._vis_color: tuple[int, int, int] = (200, 80, 200)
         self._duration = tk.StringVar(value="")
         self._status = tk.StringVar(value="Ready")
         self._rendering = False
@@ -81,19 +89,20 @@ class AMVMakerApp(tk.Tk):
 
         ttk.Label(cfg, text="Visualizers:").grid(row=0, column=0, sticky=tk.NW, pady=2)
         vis_frame = tk.Frame(cfg, bg="#1a1a2e")
-        vis_frame.grid(row=0, column=1, sticky=tk.W, padx=5)
+        vis_frame.grid(row=0, column=1, columnspan=3, sticky=tk.W, padx=5)
         for vt in VISUALIZER_TYPES:
-            tk.Checkbutton(vis_frame, text=vt, variable=self._vis_checks[vt],
+            row_f = tk.Frame(vis_frame, bg="#1a1a2e")
+            row_f.pack(anchor=tk.W)
+            tk.Checkbutton(row_f, text=vt, variable=self._vis_checks[vt],
                            bg="#1a1a2e", fg="#e0e0e0", selectcolor="#2a2a4e",
-                           activebackground="#1a1a2e", activeforeground="#e0e0e0"
-                           ).pack(anchor=tk.W)
-
-        ttk.Label(cfg, text="Color:").grid(row=0, column=2, sticky=tk.NW, padx=(15, 0), pady=2)
-        self._color_swatch = tk.Label(
-            cfg, bg="#c850c8", width=3, relief=tk.RAISED, cursor="hand2"
-        )
-        self._color_swatch.grid(row=0, column=3, sticky=tk.NW, padx=5, pady=2)
-        self._color_swatch.bind("<Button-1>", lambda e: self._pick_color())
+                           activebackground="#1a1a2e", activeforeground="#e0e0e0",
+                           width=14, anchor=tk.W
+                           ).pack(side=tk.LEFT)
+            hex_c = "#%02x%02x%02x" % self._vis_colors[vt]
+            swatch = tk.Label(row_f, bg=hex_c, width=3, relief=tk.RAISED, cursor="hand2")
+            swatch.pack(side=tk.LEFT, padx=4)
+            self._vis_swatches[vt] = swatch
+            swatch.bind("<Button-1>", lambda e, name=vt: self._pick_vis_color(name))
 
         ttk.Label(cfg, text="Bars:").grid(row=1, column=0, sticky=tk.W, pady=2)
         ttk.Spinbox(cfg, from_=10, to=80, textvariable=self._bar_count, width=8).grid(
@@ -209,13 +218,13 @@ class AMVMakerApp(tk.Tk):
         self._track_listbox.insert(idx + 1, text)
         self._track_listbox.selection_set(idx + 1)
 
-    def _pick_color(self):
-        initial = "#%02x%02x%02x" % self._vis_color
-        result = colorchooser.askcolor(color=initial, title="Visualizer Color")
+    def _pick_vis_color(self, vis_name: str):
+        initial = "#%02x%02x%02x" % self._vis_colors[vis_name]
+        result = colorchooser.askcolor(color=initial, title=f"{vis_name} Color")
         if result and result[0]:
             rgb = tuple(int(c) for c in result[0])
-            self._vis_color = rgb
-            self._color_swatch.configure(bg=result[1])
+            self._vis_colors[vis_name] = rgb
+            self._vis_swatches[vis_name].configure(bg=result[1])
 
     def _pick_heart_color(self):
         initial = "#%02x%02x%02x" % self._heart_color
@@ -280,7 +289,7 @@ class AMVMakerApp(tk.Tk):
             heart_color=self._heart_color,
             duration=duration,
             visualizer=[vt for vt, var in self._vis_checks.items() if var.get()],
-            vis_color=self._vis_color,
+            vis_colors={vt: self._vis_colors[vt] for vt in VISUALIZER_TYPES},
         )
 
         thread = threading.Thread(target=self._render_worker, args=(params,), daemon=True)

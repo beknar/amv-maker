@@ -432,7 +432,7 @@ class TestBuildRenderer:
 
     def test_custom_vis_color(self, synthetic_image, synthetic_bar_data):
         make_frame = build_renderer(synthetic_image, synthetic_bar_data, [],
-                                    vis_color=(0, 255, 0))
+                                    vis_colors={"Bar Graph": (0, 255, 0)})
         frame = make_frame(0.5)
         assert frame.shape == (HEIGHT, WIDTH, 3)
 

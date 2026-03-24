@@ -462,7 +462,7 @@ def build_renderer(bg_image, bar_data: np.ndarray,
                    petals: list[Petal], visualizer: str | list[str] = "Bar Graph",
                    waveforms: list | None = None, particles: list | None = None,
                    raindrops: list[Raindrop] | None = None,
-                   vis_color: tuple[int, int, int] = DEFAULT_VIS_COLOR,
+                   vis_colors: dict[str, tuple[int, int, int]] | None = None,
                    lightning_intensity: int = 0,
                    beat_frames: np.ndarray | None = None,
                    hearts: list[Heart] | None = None,
@@ -538,16 +538,18 @@ def build_renderer(bg_image, bar_data: np.ndarray,
         overlay = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
 
-        # draw selected visualizers (one or more)
+        # draw selected visualizers (one or more), each with its own color
+        _colors = vis_colors or {}
         vis_list = visualizer if isinstance(visualizer, list) else [visualizer]
         for vis in vis_list:
+            vc = _colors.get(vis, DEFAULT_VIS_COLOR)
             if vis == "Bar Graph":
-                draw_bar_visualizer(draw, amplitudes, vis_color)
+                draw_bar_visualizer(draw, amplitudes, vc)
             elif vis == "Oscilloscope" and waveforms:
                 wf_idx = min(frame_idx, len(waveforms) - 1)
-                draw_oscilloscope(draw, waveforms[wf_idx], vis_color)
+                draw_oscilloscope(draw, waveforms[wf_idx], vc)
             elif vis == "Radial":
-                draw_radial_visualizer(draw, amplitudes, vis_color)
+                draw_radial_visualizer(draw, amplitudes, vc)
             elif vis == "Particle" and particles is not None:
                 _dt = 1.0 / FPS
                 energy = float(amplitudes.mean())
@@ -556,7 +558,7 @@ def build_renderer(bg_image, bar_data: np.ndarray,
                         p.reset(energy)
                 for p in particles:
                     p.update(_dt)
-                    p.draw(overlay, vis_color)
+                    p.draw(overlay, vc)
 
         dt = 1.0 / FPS
 
@@ -709,6 +711,7 @@ def render_video(
     duration: float | None = None,
     visualizer: str | list[str] = "Bar Graph",
     vis_color: tuple[int, int, int] = DEFAULT_VIS_COLOR,
+    vis_colors: dict[str, tuple[int, int, int]] | None = None,
     progress_callback: Callable[[float], None] | None = None,
 ) -> str:
     """Render an AMV and return the output file path.
@@ -799,8 +802,15 @@ def render_video(
     if lightning_intensity > 0:
         beat_frames = detect_beats(y_samples, sr, FPS, min_gap_s=5.0)
 
+    # build per-visualizer color map
+    _vis_colors = vis_colors or {}
+    # fallback: if vis_colors not provided, use single vis_color for all
+    if not _vis_colors:
+        vl = visualizer if isinstance(visualizer, list) else [visualizer]
+        _vis_colors = {v: vis_color for v in vl}
+
     make_frame = build_renderer(bg, bar_data, petals, visualizer, waveforms, particles,
-                                raindrops, vis_color, lightning_intensity, beat_frames,
+                                raindrops, _vis_colors, lightning_intensity, beat_frames,
                                 hearts_list, heart_color,
                                 track_backgrounds, track_durations_list)
 
