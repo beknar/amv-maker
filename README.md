@@ -2,7 +2,7 @@
 
 Generate anime music videos in the style of Poisonpop Candy— anime images composited with audio-reactive visualizers, decorative effects, and rendered to MP4.
 
-![alt text](image-1.png)
+![app demo image](demo-image-1.PNG)
 
 ## Features
 
