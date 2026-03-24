@@ -11,14 +11,14 @@ from PIL import Image, ImageDraw
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from render import (
+from constants import (
     WIDTH, HEIGHT, FPS, VIS_BOTTOM_Y, MAX_BOXES, BAR_BOX_H, BOX_VGAP,
     BAR_GAP, DEFAULT_VIS_COLOR, VIS_ALPHA,
-    _vis_rgba,
-    Petal, Raindrop, Particle,
-    draw_bar_visualizer, draw_oscilloscope, draw_radial_visualizer,
-    analyse_audio_waveform, build_renderer,
 )
+from effects import Petal, Raindrop, Particle, _vis_rgba
+from visualizers import draw_bar_visualizer, draw_oscilloscope, draw_radial_visualizer
+from audio import analyse_audio_waveform
+from render import build_renderer
 
 
 # ── fixtures ────────────────────────────────────────────────────────────────
@@ -446,7 +446,7 @@ class TestBuildRenderer:
 # ── analyse_audio (mocked) ──────────────────────────────────────────────────
 
 class TestAnalyseAudio:
-    @patch("render.librosa")
+    @patch("audio.librosa")
     def test_returns_correct_shape(self, mock_librosa):
         from render import analyse_audio
 
@@ -461,7 +461,7 @@ class TestAnalyseAudio:
         assert returned_sr == sr
         assert duration == pytest.approx(n_samples / sr)
 
-    @patch("render.librosa")
+    @patch("audio.librosa")
     def test_amplitudes_in_range(self, mock_librosa):
         from render import analyse_audio
 

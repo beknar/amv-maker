@@ -15,7 +15,8 @@ from pathlib import Path
 
 from PIL import Image, ImageTk
 
-from render import VISUALIZER_TYPES, render_video
+from constants import VISUALIZER_TYPES
+from render import render_video
 from player import VideoPlayer
 
 
