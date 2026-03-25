@@ -127,7 +127,7 @@ class AMVMakerApp(tk.Tk):
         r = 0
         for label, var, extra in [
             ("Bars:", self._bar_count, None),
-            ("Sweep (s):", self._bar_sweep_speed, "(0.1-2.0)"),
+            ("Sweep (s):", self._bar_sweep_speed, "(0.1-10)"),
             ("Petals:", self._petal_count, None),
             ("Rainfall:", self._raindrop_count, "(0 = off)"),
             ("Lightning:", self._lightning_intensity, "(0-10)"),
