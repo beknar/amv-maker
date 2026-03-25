@@ -110,42 +110,72 @@ def build_renderer(bg_image, bar_data: np.ndarray,
     if beat_frames is None:
         beat_frames = np.array([], dtype=int)
 
-    # pre-compute bar color index per frame if bar_colors has multiple colors
-    _bar_color_indices = None
-    if bar_colors and len(bar_colors) > 1 and len(beat_frames) > 0:
-        # use the same beat_frames; cycle color randomly on each beat
+    # pre-compute per-bar color index for each frame (sweeping transitions)
+    n_bars = bar_data.shape[1]
+    _bar_color_map = None  # will be a list of lists: _bar_color_map[frame][bar] = color_idx
+    if bar_colors and len(bar_colors) > 1:
         total_frames = bar_data.shape[0]
-        _bar_color_indices = [0] * total_frames
-        rng = random.Random(42)  # deterministic for reproducibility
-        current_idx = 0
-        beat_set = set(int(b) for b in beat_frames)
-        for f in range(total_frames):
-            if f in beat_set:
-                # pick a different color randomly
-                choices = [i for i in range(len(bar_colors)) if i != current_idx]
-                current_idx = rng.choice(choices) if choices else 0
-            _bar_color_indices[f] = current_idx
-    elif bar_colors and len(bar_colors) > 1:
-        # no beats detected — detect our own with shorter gap for color cycling
-        from audio import detect_beats
-        # we need audio samples — use bar_data energy as proxy
-        # approximate beats from bar_data energy peaks
-        energy = bar_data.mean(axis=1)
-        total_frames = bar_data.shape[0]
-        _bar_color_indices = [0] * total_frames
+        sweep_frames = max(1, FPS // 3)  # sweep takes ~0.3 seconds across all bars
+
+        # find beat frames for color switching
+        if len(beat_frames) == 0:
+            # fallback: energy peaks
+            energy = bar_data.mean(axis=1)
+            threshold = energy.mean() + energy.std() * 0.5
+            beat_list = []
+            cooldown = 0
+            for f in range(total_frames):
+                if cooldown > 0:
+                    cooldown -= 1
+                elif energy[f] > threshold:
+                    beat_list.append(f)
+                    cooldown = FPS
+        else:
+            beat_list = [int(b) for b in beat_frames]
+
+        # for each beat, pick a new color and a sweep direction
         rng = random.Random(42)
+        transitions = []  # (start_frame, new_color_idx, left_to_right)
         current_idx = 0
-        # simple peak detection: switch when energy crosses above threshold
-        threshold = energy.mean() + energy.std() * 0.5
-        cooldown = 0
+        for bf in beat_list:
+            choices = [i for i in range(len(bar_colors)) if i != current_idx]
+            new_idx = rng.choice(choices) if choices else 0
+            left_to_right = rng.choice([True, False])
+            transitions.append((bf, new_idx, left_to_right))
+            current_idx = new_idx
+
+        # build the per-bar color map
+        # start with all bars at color 0
+        bar_state = [0] * n_bars
+        _bar_color_map = []
+        trans_idx = 0
+        active_sweep = None  # (start_frame, new_color, left_to_right)
+
         for f in range(total_frames):
-            if cooldown > 0:
-                cooldown -= 1
-            elif energy[f] > threshold:
-                choices = [i for i in range(len(bar_colors)) if i != current_idx]
-                current_idx = rng.choice(choices) if choices else 0
-                cooldown = FPS  # 1 second cooldown
-            _bar_color_indices[f] = current_idx
+            # check if a new transition starts
+            if trans_idx < len(transitions) and f >= transitions[trans_idx][0]:
+                active_sweep = transitions[trans_idx]
+                trans_idx += 1
+
+            if active_sweep is not None:
+                sweep_start, new_color, ltr = active_sweep
+                progress = f - sweep_start
+                if progress < sweep_frames:
+                    # how many bars have switched so far
+                    bars_switched = int((progress + 1) / sweep_frames * n_bars)
+                    bars_switched = min(bars_switched, n_bars)
+                    if ltr:
+                        for b in range(bars_switched):
+                            bar_state[b] = new_color
+                    else:
+                        for b in range(n_bars - bars_switched, n_bars):
+                            bar_state[b] = new_color
+                elif progress == sweep_frames:
+                    # finish sweep — all bars to new color
+                    bar_state = [new_color] * n_bars
+                    active_sweep = None
+
+            _bar_color_map.append(list(bar_state))
 
     def make_frame(t: float) -> np.ndarray:
         frame_idx = int(t * FPS)
@@ -197,11 +227,12 @@ def build_renderer(bg_image, bar_data: np.ndarray,
         for vis in vis_list:
             vc = _colors.get(vis, DEFAULT_VIS_COLOR)
             if vis == "Bar Graph":
-                bci = 0
-                if _bar_color_indices is not None:
-                    bci = _bar_color_indices[min(frame_idx, len(_bar_color_indices) - 1)]
+                per_bar = None
+                if _bar_color_map is not None:
+                    fidx = min(frame_idx, len(_bar_color_map) - 1)
+                    per_bar = _bar_color_map[fidx]
                 draw_bar_visualizer(draw, amplitudes, vc,
-                                    bar_colors=bar_colors, active_bar_color_idx=bci)
+                                    bar_colors=bar_colors, per_bar_color_indices=per_bar)
             elif vis == "Oscilloscope" and waveforms:
                 wf_idx = min(frame_idx, len(waveforms) - 1)
                 draw_oscilloscope(draw, waveforms[wf_idx], vc)

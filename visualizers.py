@@ -24,18 +24,23 @@ def _vis_rgba(rgb: tuple[int, int, int], alpha: int = VIS_ALPHA) -> tuple[int, i
 def draw_bar_visualizer(draw: ImageDraw.ImageDraw, amplitudes: np.ndarray,
                         color: tuple[int, int, int] = DEFAULT_VIS_COLOR,
                         bar_colors: list[tuple[int, int, int]] | None = None,
-                        active_bar_color_idx: int = 0):
+                        per_bar_color_indices: list[int] | None = None):
     """Stacked semi-transparent bar graph made of individual boxes.
 
-    If bar_colors is provided, uses bar_colors[active_bar_color_idx] instead of color.
+    If bar_colors and per_bar_color_indices are provided, each bar gets its
+    own color from bar_colors[per_bar_color_indices[i]], enabling sweeping
+    color transitions across the visualizer.
     """
-    if bar_colors:
-        color = bar_colors[active_bar_color_idx % len(bar_colors)]
-    fill = _vis_rgba(color)
     total_bar_width = WIDTH // max(1, len(amplitudes))
     box_w = max(1, total_bar_width - BAR_GAP)
     box_step = BAR_BOX_H + BOX_VGAP
     for i, amp in enumerate(amplitudes):
+        # select color for this bar
+        if bar_colors and per_bar_color_indices and i < len(per_bar_color_indices):
+            c = bar_colors[per_bar_color_indices[i] % len(bar_colors)]
+        else:
+            c = color
+        fill = _vis_rgba(c)
         num_boxes = int(amp * MAX_BOXES)
         x0 = i * total_bar_width
         for j in range(num_boxes):
