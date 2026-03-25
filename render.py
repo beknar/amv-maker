@@ -26,7 +26,7 @@ from PIL import Image
 from constants import (
     WIDTH, HEIGHT, FPS, BAR_COUNT, DEFAULT_VIS_COLOR,
     NUM_PETALS, NUM_RAINDROPS, LIGHTNING_INTENSITY,
-    HEART_INTENSITY, HEART_COLOR, VISUALIZER_TYPES,
+    HEART_INTENSITY, HEART_COLOR, BAR_SWEEP_SPEED, VISUALIZER_TYPES,
 )
 from effects import Petal, Raindrop, Heart, Particle
 from audio import (
@@ -52,6 +52,7 @@ def render_video(
     vis_color: tuple[int, int, int] = DEFAULT_VIS_COLOR,
     vis_colors: dict[str, tuple[int, int, int]] | None = None,
     bar_colors: list[tuple[int, int, int]] | None = None,
+    bar_sweep_speed: float = BAR_SWEEP_SPEED,
     progress_callback: Callable[[float], None] | None = None,
 ) -> str:
     """Render an AMV and return the output file path."""
@@ -144,7 +145,7 @@ def render_video(
                                 raindrops, _vis_colors, lightning_intensity, beat_frames,
                                 hearts_list, heart_color,
                                 track_backgrounds, track_durations_list,
-                                bar_colors=bar_colors)
+                                bar_colors=bar_colors, bar_sweep_speed=bar_sweep_speed)
 
     clip = VideoClip(make_frame, duration=dur).with_fps(FPS)
     audio_clip = AudioFileClip(audio_path)

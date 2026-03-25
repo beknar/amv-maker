@@ -19,5 +19,6 @@ LIGHTNING_INTENSITY = 0
 HEART_INTENSITY = 0
 HEART_COLOR = (255, 80, 150)
 CROSSFADE_SECONDS = 3.0
+BAR_SWEEP_SPEED = 0.3    # seconds for color sweep across all bars
 
 VISUALIZER_TYPES = ["Bar Graph", "Oscilloscope", "Radial", "Particle"]

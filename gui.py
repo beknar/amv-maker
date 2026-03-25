@@ -48,6 +48,7 @@ class AMVMakerApp(tk.Tk):
             (200, 80, 200), (0, 200, 255), (255, 100, 80), (80, 255, 150)
         ]
         self._bar_color_swatches: list[tk.Label] = []
+        self._bar_sweep_speed = tk.DoubleVar(value=0.3)
         self._bar_count = tk.IntVar(value=40)
         self._petal_count = tk.IntVar(value=25)
         self._raindrop_count = tk.IntVar(value=0)
@@ -126,6 +127,7 @@ class AMVMakerApp(tk.Tk):
         r = 0
         for label, var, extra in [
             ("Bars:", self._bar_count, None),
+            ("Sweep (s):", self._bar_sweep_speed, "(0.1-2.0)"),
             ("Petals:", self._petal_count, None),
             ("Rainfall:", self._raindrop_count, "(0 = off)"),
             ("Lightning:", self._lightning_intensity, "(0-10)"),
@@ -319,6 +321,7 @@ class AMVMakerApp(tk.Tk):
             visualizer=[vt for vt, var in self._vis_checks.items() if var.get()],
             vis_colors={vt: self._vis_colors[vt] for vt in VISUALIZER_TYPES},
             bar_colors=list(self._bar_colors),
+            bar_sweep_speed=self._bar_sweep_speed.get(),
         )
 
         thread = threading.Thread(target=self._render_worker, args=(params,), daemon=True)

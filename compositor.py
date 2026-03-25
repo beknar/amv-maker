@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw
 
 from constants import (
     WIDTH, HEIGHT, FPS, DEFAULT_VIS_COLOR, HEART_COLOR, CROSSFADE_SECONDS,
+    BAR_SWEEP_SPEED,
 )
 from effects import Petal, Raindrop, Heart, Particle
 from visualizers import (
@@ -94,7 +95,8 @@ def build_renderer(bg_image, bar_data: np.ndarray,
                    heart_color: tuple[int, int, int] = HEART_COLOR,
                    track_backgrounds: list | None = None,
                    track_durations: list[float] | None = None,
-                   bar_colors: list[tuple[int, int, int]] | None = None):
+                   bar_colors: list[tuple[int, int, int]] | None = None,
+                   bar_sweep_speed: float = BAR_SWEEP_SPEED):
     """Return a function(t) -> numpy frame for VideoClip."""
 
     if track_backgrounds and track_durations:
@@ -115,7 +117,7 @@ def build_renderer(bg_image, bar_data: np.ndarray,
     _bar_color_map = None  # will be a list of lists: _bar_color_map[frame][bar] = color_idx
     if bar_colors and len(bar_colors) > 1:
         total_frames = bar_data.shape[0]
-        sweep_frames = max(1, FPS // 3)  # sweep takes ~0.3 seconds across all bars
+        sweep_frames = max(1, int(FPS * bar_sweep_speed))
 
         # find beat frames for color switching
         if len(beat_frames) == 0:
