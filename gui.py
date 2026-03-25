@@ -44,6 +44,10 @@ class AMVMakerApp(tk.Tk):
             self._vis_checks[vt] = tk.BooleanVar(value=(vt == "Bar Graph"))
             self._vis_colors[vt] = default_colors.get(vt, (200, 80, 200))
         self._vis_swatches: dict[str, tk.Label] = {}
+        self._bar_colors: list[tuple[int, int, int]] = [
+            (200, 80, 200), (0, 200, 255), (255, 100, 80), (80, 255, 150)
+        ]
+        self._bar_color_swatches: list[tk.Label] = []
         self._bar_count = tk.IntVar(value=40)
         self._petal_count = tk.IntVar(value=25)
         self._raindrop_count = tk.IntVar(value=0)
@@ -100,11 +104,20 @@ class AMVMakerApp(tk.Tk):
                            activebackground="#1a1a2e", activeforeground="#e0e0e0",
                            width=14, anchor=tk.W
                            ).pack(side=tk.LEFT)
-            hex_c = "#%02x%02x%02x" % self._vis_colors[vt]
-            swatch = tk.Label(row_f, bg=hex_c, width=3, relief=tk.RAISED, cursor="hand2")
-            swatch.pack(side=tk.LEFT, padx=4)
-            self._vis_swatches[vt] = swatch
-            swatch.bind("<Button-1>", lambda e, name=vt: self._pick_vis_color(name))
+            if vt == "Bar Graph":
+                # 4 color swatches for beat-cycling
+                for ci in range(4):
+                    hex_c = "#%02x%02x%02x" % self._bar_colors[ci]
+                    sw = tk.Label(row_f, bg=hex_c, width=2, relief=tk.RAISED, cursor="hand2")
+                    sw.pack(side=tk.LEFT, padx=1)
+                    self._bar_color_swatches.append(sw)
+                    sw.bind("<Button-1>", lambda e, idx=ci: self._pick_bar_color(idx))
+            else:
+                hex_c = "#%02x%02x%02x" % self._vis_colors[vt]
+                swatch = tk.Label(row_f, bg=hex_c, width=3, relief=tk.RAISED, cursor="hand2")
+                swatch.pack(side=tk.LEFT, padx=4)
+                self._vis_swatches[vt] = swatch
+                swatch.bind("<Button-1>", lambda e, name=vt: self._pick_vis_color(name))
 
         # right: all other settings
         right = tk.Frame(cfg, bg="#1a1a2e")
@@ -225,6 +238,14 @@ class AMVMakerApp(tk.Tk):
         self._track_listbox.insert(idx + 1, text)
         self._track_listbox.selection_set(idx + 1)
 
+    def _pick_bar_color(self, idx: int):
+        initial = "#%02x%02x%02x" % self._bar_colors[idx]
+        result = colorchooser.askcolor(color=initial, title=f"Bar Graph Color {idx + 1}")
+        if result and result[0]:
+            rgb = tuple(int(c) for c in result[0])
+            self._bar_colors[idx] = rgb
+            self._bar_color_swatches[idx].configure(bg=result[1])
+
     def _pick_vis_color(self, vis_name: str):
         initial = "#%02x%02x%02x" % self._vis_colors[vis_name]
         result = colorchooser.askcolor(color=initial, title=f"{vis_name} Color")
@@ -297,6 +318,7 @@ class AMVMakerApp(tk.Tk):
             duration=duration,
             visualizer=[vt for vt, var in self._vis_checks.items() if var.get()],
             vis_colors={vt: self._vis_colors[vt] for vt in VISUALIZER_TYPES},
+            bar_colors=list(self._bar_colors),
         )
 
         thread = threading.Thread(target=self._render_worker, args=(params,), daemon=True)

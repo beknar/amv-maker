@@ -3,6 +3,7 @@ Background loading, frame composition, and the build_renderer function
 that produces the per-frame callback for MoviePy.
 """
 
+import random
 from pathlib import Path
 
 import cv2
@@ -92,7 +93,8 @@ def build_renderer(bg_image, bar_data: np.ndarray,
                    hearts: list[Heart] | None = None,
                    heart_color: tuple[int, int, int] = HEART_COLOR,
                    track_backgrounds: list | None = None,
-                   track_durations: list[float] | None = None):
+                   track_durations: list[float] | None = None,
+                   bar_colors: list[tuple[int, int, int]] | None = None):
     """Return a function(t) -> numpy frame for VideoClip."""
 
     if track_backgrounds and track_durations:
@@ -107,6 +109,43 @@ def build_renderer(bg_image, bar_data: np.ndarray,
 
     if beat_frames is None:
         beat_frames = np.array([], dtype=int)
+
+    # pre-compute bar color index per frame if bar_colors has multiple colors
+    _bar_color_indices = None
+    if bar_colors and len(bar_colors) > 1 and len(beat_frames) > 0:
+        # use the same beat_frames; cycle color randomly on each beat
+        total_frames = bar_data.shape[0]
+        _bar_color_indices = [0] * total_frames
+        rng = random.Random(42)  # deterministic for reproducibility
+        current_idx = 0
+        beat_set = set(int(b) for b in beat_frames)
+        for f in range(total_frames):
+            if f in beat_set:
+                # pick a different color randomly
+                choices = [i for i in range(len(bar_colors)) if i != current_idx]
+                current_idx = rng.choice(choices) if choices else 0
+            _bar_color_indices[f] = current_idx
+    elif bar_colors and len(bar_colors) > 1:
+        # no beats detected — detect our own with shorter gap for color cycling
+        from audio import detect_beats
+        # we need audio samples — use bar_data energy as proxy
+        # approximate beats from bar_data energy peaks
+        energy = bar_data.mean(axis=1)
+        total_frames = bar_data.shape[0]
+        _bar_color_indices = [0] * total_frames
+        rng = random.Random(42)
+        current_idx = 0
+        # simple peak detection: switch when energy crosses above threshold
+        threshold = energy.mean() + energy.std() * 0.5
+        cooldown = 0
+        for f in range(total_frames):
+            if cooldown > 0:
+                cooldown -= 1
+            elif energy[f] > threshold:
+                choices = [i for i in range(len(bar_colors)) if i != current_idx]
+                current_idx = rng.choice(choices) if choices else 0
+                cooldown = FPS  # 1 second cooldown
+            _bar_color_indices[f] = current_idx
 
     def make_frame(t: float) -> np.ndarray:
         frame_idx = int(t * FPS)
@@ -158,7 +197,11 @@ def build_renderer(bg_image, bar_data: np.ndarray,
         for vis in vis_list:
             vc = _colors.get(vis, DEFAULT_VIS_COLOR)
             if vis == "Bar Graph":
-                draw_bar_visualizer(draw, amplitudes, vc)
+                bci = 0
+                if _bar_color_indices is not None:
+                    bci = _bar_color_indices[min(frame_idx, len(_bar_color_indices) - 1)]
+                draw_bar_visualizer(draw, amplitudes, vc,
+                                    bar_colors=bar_colors, active_bar_color_idx=bci)
             elif vis == "Oscilloscope" and waveforms:
                 wf_idx = min(frame_idx, len(waveforms) - 1)
                 draw_oscilloscope(draw, waveforms[wf_idx], vc)

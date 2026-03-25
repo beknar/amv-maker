@@ -51,6 +51,7 @@ def render_video(
     visualizer: str | list[str] = "Bar Graph",
     vis_color: tuple[int, int, int] = DEFAULT_VIS_COLOR,
     vis_colors: dict[str, tuple[int, int, int]] | None = None,
+    bar_colors: list[tuple[int, int, int]] | None = None,
     progress_callback: Callable[[float], None] | None = None,
 ) -> str:
     """Render an AMV and return the output file path."""
@@ -135,10 +136,15 @@ def render_video(
     if not _vis_colors:
         _vis_colors = {v: vis_color for v in vis_list}
 
+    # detect beats for bar color cycling even if lightning is off
+    if bar_colors and len(bar_colors) > 1 and beat_frames is None:
+        beat_frames = detect_beats(y_samples, sr, FPS, min_gap_s=1.0)
+
     make_frame = build_renderer(bg, bar_data, petals, visualizer, waveforms, particles,
                                 raindrops, _vis_colors, lightning_intensity, beat_frames,
                                 hearts_list, heart_color,
-                                track_backgrounds, track_durations_list)
+                                track_backgrounds, track_durations_list,
+                                bar_colors=bar_colors)
 
     clip = VideoClip(make_frame, duration=dur).with_fps(FPS)
     audio_clip = AudioFileClip(audio_path)

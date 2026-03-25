@@ -22,8 +22,15 @@ def _vis_rgba(rgb: tuple[int, int, int], alpha: int = VIS_ALPHA) -> tuple[int, i
 # ── bar graph ───────────────────────────────────────────────────────────────
 
 def draw_bar_visualizer(draw: ImageDraw.ImageDraw, amplitudes: np.ndarray,
-                        color: tuple[int, int, int] = DEFAULT_VIS_COLOR):
-    """Stacked semi-transparent bar graph made of individual boxes."""
+                        color: tuple[int, int, int] = DEFAULT_VIS_COLOR,
+                        bar_colors: list[tuple[int, int, int]] | None = None,
+                        active_bar_color_idx: int = 0):
+    """Stacked semi-transparent bar graph made of individual boxes.
+
+    If bar_colors is provided, uses bar_colors[active_bar_color_idx] instead of color.
+    """
+    if bar_colors:
+        color = bar_colors[active_bar_color_idx % len(bar_colors)]
     fill = _vis_rgba(color)
     total_bar_width = WIDTH // max(1, len(amplitudes))
     box_w = max(1, total_bar_width - BAR_GAP)
