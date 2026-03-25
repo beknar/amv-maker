@@ -10,7 +10,7 @@ Generate anime music videos in the style of Poisonpop Candy— anime images comp
 
 Select any combination of visualizers to render together, each with its own color:
 
-- **Bar Graph** — Stacked semi-transparent boxes that build up and collapse with audio amplitude, with visible gaps between individual boxes.
+- **Bar Graph** — Stacked semi-transparent boxes that build up and collapse with audio amplitude, with visible gaps between individual boxes. Supports 4 configurable colors that cycle on beats with sweeping left-to-right or right-to-left transitions, so 1-4 colors can be visible at once.
 - **Oscilloscope** — Waveform trace with a multi-layer glow effect.
 - **Radial** — Frequency bars arranged in a full-screen circle that pulse outward.
 - **Particle** — Energy-reactive particles that spawn on beats with gravity and decay.
@@ -39,6 +39,7 @@ Select any combination of visualizers to render together, each with its own colo
 
 - **Track playlist** — Add/Remove/Reorder paired image+audio tracks
 - **Visualizer checkbuttons** — Select 1-4 visualizers with per-effect color pickers
+- **Bar graph 4-color swatches** — Four colors that sweep across bars on beats
 - **Effect controls** — Spinboxes for bars, petals, rainfall, lightning, hearts, duration
 - **Heart color picker** — Separate color swatch for heart outlines
 - **Determinate progress bar** with percentage during rendering

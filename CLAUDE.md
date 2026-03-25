@@ -49,8 +49,11 @@ Six source modules, a GUI, and a video player:
 ## Effects & Visualizers
 
 - **Visualizers** (1-4 simultaneous): Bar Graph, Oscilloscope, Radial, Particle
+- **Bar Graph** has 4 configurable colors that cycle on beats with sweeping L-to-R or R-to-L
+  transitions (precomputed per-bar color map in `compositor.py`)
 - **Effects**: Cherry blossom petals, rainfall, lightning bolts (beat-synced), hollow hearts
 - All effects have intensity/count controls; visualizers and hearts have per-effect color pickers
+- Beat detection (librosa onset strength) drives both lightning timing and bar color cycling
 
 ## Dependencies
 
