@@ -24,7 +24,7 @@ class AMVMakerApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("AMV Maker")
-        self.geometry("750x1120")
+        self.geometry("800x1000")
         self.resizable(False, False)
         self.configure(bg="#1a1a2e")
 
@@ -124,9 +124,9 @@ class AMVMakerApp(tk.Tk):
                 self._vis_swatches[vt] = swatch
                 swatch.bind("<Button-1>", lambda e, name=vt: self._pick_vis_color(name))
 
-        # right: all other settings
-        right = tk.Frame(cfg, bg="#1a1a2e")
-        right.pack(side=tk.LEFT, anchor=tk.NW, fill=tk.X, expand=True)
+        # middle: effect settings
+        mid = tk.Frame(cfg, bg="#1a1a2e")
+        mid.pack(side=tk.LEFT, anchor=tk.NW, padx=(0, 15))
 
         r = 0
         for label, var, extra in [
@@ -136,55 +136,52 @@ class AMVMakerApp(tk.Tk):
             ("Rainfall:", self._raindrop_count, "(0 = off)"),
             ("Lightning:", self._lightning_intensity, "(0-10)"),
         ]:
-            ttk.Label(right, text=label).grid(row=r, column=0, sticky=tk.W, pady=1)
-            ttk.Spinbox(right, from_=0, to=500, textvariable=var, width=8).grid(
-                row=r, column=1, sticky=tk.W, padx=5)
+            ttk.Label(mid, text=label).grid(row=r, column=0, sticky=tk.W, pady=1)
+            ttk.Spinbox(mid, from_=0, to=500, textvariable=var, width=6).grid(
+                row=r, column=1, sticky=tk.W, padx=3)
             if extra:
-                ttk.Label(right, text=extra).grid(row=r, column=2, sticky=tk.W)
+                ttk.Label(mid, text=extra).grid(row=r, column=2, sticky=tk.W)
             r += 1
 
-        ttk.Label(right, text="Hearts:").grid(row=r, column=0, sticky=tk.W, pady=1)
-        ttk.Spinbox(right, from_=0, to=20, textvariable=self._heart_intensity, width=8).grid(
-            row=r, column=1, sticky=tk.W, padx=5)
+        ttk.Label(mid, text="Hearts:").grid(row=r, column=0, sticky=tk.W, pady=1)
+        ttk.Spinbox(mid, from_=0, to=20, textvariable=self._heart_intensity, width=6).grid(
+            row=r, column=1, sticky=tk.W, padx=3)
         self._heart_swatch = tk.Label(
-            right, bg="#ff5096", width=3, relief=tk.RAISED, cursor="hand2"
+            mid, bg="#ff5096", width=2, relief=tk.RAISED, cursor="hand2"
         )
-        self._heart_swatch.grid(row=r, column=2, sticky=tk.W, padx=5)
+        self._heart_swatch.grid(row=r, column=2, sticky=tk.W, padx=3)
         self._heart_swatch.bind("<Button-1>", lambda e: self._pick_heart_color())
         r += 1
 
-        ttk.Label(right, text="Duration:").grid(row=r, column=0, sticky=tk.W, pady=1)
-        ttk.Entry(right, textvariable=self._duration, width=8).grid(
-            row=r, column=1, sticky=tk.W, padx=5)
-        ttk.Label(right, text="(blank=full)").grid(row=r, column=2, sticky=tk.W)
-        r += 1
+        ttk.Label(mid, text="Duration:").grid(row=r, column=0, sticky=tk.W, pady=1)
+        ttk.Entry(mid, textvariable=self._duration, width=6).grid(
+            row=r, column=1, sticky=tk.W, padx=3)
+        ttk.Label(mid, text="(blank=full)").grid(row=r, column=2, sticky=tk.W)
 
-        # ── text overlay ──
-        txt = ttk.LabelFrame(self, text="  Text Overlay (upper-right)  ", padding=5)
-        txt.pack(fill=tk.X, padx=10, pady=(0, 5))
+        # right: text overlay settings
+        right = tk.Frame(cfg, bg="#1a1a2e")
+        right.pack(side=tk.LEFT, anchor=tk.NW)
 
-        txt_top = tk.Frame(txt, bg="#1a1a2e")
-        txt_top.pack(fill=tk.X)
-        ttk.Label(txt_top, text="Text:").pack(side=tk.LEFT)
-        ttk.Entry(txt_top, textvariable=self._overlay_text, width=30).pack(
-            side=tk.LEFT, padx=5)
-        self._text_color_swatch = tk.Label(
-            txt_top, bg="#ffffff", width=3, relief=tk.RAISED, cursor="hand2"
-        )
-        self._text_color_swatch.pack(side=tk.RIGHT, padx=5)
-        ttk.Label(txt_top, text="Color:").pack(side=tk.RIGHT)
+        ttk.Label(right, text="Text Overlay:").grid(row=0, column=0, columnspan=2, sticky=tk.W)
+        ttk.Label(right, text="Text:").grid(row=1, column=0, sticky=tk.W, pady=1)
+        ttk.Entry(right, textvariable=self._overlay_text, width=16).grid(
+            row=1, column=1, sticky=tk.W, padx=3)
 
-        txt_bot = tk.Frame(txt, bg="#1a1a2e")
-        txt_bot.pack(fill=tk.X, pady=(3, 0))
-        ttk.Label(txt_bot, text="Font:").pack(side=tk.LEFT)
+        ttk.Label(right, text="Font:").grid(row=2, column=0, sticky=tk.W, pady=1)
         font_names = self._get_available_fonts()
-        font_combo = ttk.Combobox(txt_bot, textvariable=self._overlay_font,
-                                  values=font_names, state="readonly", width=18)
-        font_combo.pack(side=tk.LEFT, padx=5)
-        ttk.Label(txt_bot, text="Size:").pack(side=tk.LEFT, padx=(10, 0))
-        ttk.Spinbox(txt_bot, from_=12, to=120, textvariable=self._overlay_size,
-                     width=5).pack(side=tk.LEFT, padx=5)
+        ttk.Combobox(right, textvariable=self._overlay_font,
+                     values=font_names, state="readonly", width=14).grid(
+            row=2, column=1, sticky=tk.W, padx=3)
 
+        ttk.Label(right, text="Size:").grid(row=3, column=0, sticky=tk.W, pady=1)
+        ttk.Spinbox(right, from_=12, to=120, textvariable=self._overlay_size,
+                     width=5).grid(row=3, column=1, sticky=tk.W, padx=3)
+
+        ttk.Label(right, text="Color:").grid(row=4, column=0, sticky=tk.W, pady=1)
+        self._text_color_swatch = tk.Label(
+            right, bg="#ffffff", width=3, relief=tk.RAISED, cursor="hand2"
+        )
+        self._text_color_swatch.grid(row=4, column=1, sticky=tk.W, padx=3)
         self._text_color_swatch.bind("<Button-1>", lambda e: self._pick_text_color())
 
         # output path — full width below
