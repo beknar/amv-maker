@@ -21,6 +21,7 @@ test_rain.png
 
 # Claude Code
 .claude/
+.mcp.json
 
 # IDE
 .vscode/
