@@ -92,14 +92,58 @@ pip install -r requirements.txt
 
 ### Standalone Executable
 
-Build a single-file `.exe` (no Python installation needed to run):
+Build a single-file `.exe` that runs without Python installed. The executable bundles all Python modules, FFmpeg, librosa, scipy, numpy, OpenCV, pygame, Pillow, moviepy, and soundfile native DLLs.
+
+#### Prerequisites
+
+- Python 3.12+ with the virtual environment set up (see above)
+- PyInstaller
+
+#### Build Steps
 
 ```bash
+# activate the virtual environment first
+# Windows
+venv\Scripts\activate.bat
+# macOS/Linux
+source venv/bin/activate
+
+# install PyInstaller
 pip install pyinstaller
+
+# build the executable
 python build.py
 ```
 
-The executable will be at `dist/AMV Maker.exe` (~190MB, includes FFmpeg and all dependencies).
+#### Output
+
+- **Location:** `dist/AMV Maker.exe`
+- **Size:** ~190MB
+- **Includes:** FFmpeg binary, all Python dependencies, all project modules
+- **No Python installation required** to run the executable
+
+#### What Gets Bundled
+
+| Component | Source |
+|-----------|--------|
+| FFmpeg | imageio-ffmpeg bundled binary |
+| Audio processing | librosa, scipy, numpy, soundfile, soxr |
+| Video encoding | moviepy, imageio |
+| GUI framework | tkinter (built into Python) |
+| Video playback | OpenCV (cv2), pygame |
+| Image rendering | Pillow (PIL) |
+| ML/DSP | numba, llvmlite, scikit-learn |
+| Project modules | gui, player, render, compositor, visualizers, effects, audio, constants |
+
+#### Running the Executable
+
+Double-click `AMV Maker.exe` — no installation, no command line needed.
+
+#### Troubleshooting
+
+- If Windows Defender flags the executable, add an exception for `dist/AMV Maker.exe`
+- If the build fails with missing DLL errors, ensure all `pip install -r requirements.txt` dependencies installed correctly
+- The `tbb12.dll` warning during build is harmless and can be ignored
 
 ## Usage
 
