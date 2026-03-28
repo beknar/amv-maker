@@ -90,7 +90,22 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### Standalone Executable
+
+Build a single-file `.exe` (no Python installation needed to run):
+
+```bash
+pip install pyinstaller
+python build.py
+```
+
+The executable will be at `dist/AMV Maker.exe` (~190MB, includes FFmpeg and all dependencies).
+
 ## Usage
+
+### Standalone
+
+Double-click `AMV Maker.exe` — no installation required.
 
 ### GUI
 
