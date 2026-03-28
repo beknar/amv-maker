@@ -53,6 +53,10 @@ def render_video(
     vis_colors: dict[str, tuple[int, int, int]] | None = None,
     bar_colors: list[tuple[int, int, int]] | None = None,
     bar_sweep_speed: float = BAR_SWEEP_SPEED,
+    overlay_text: str | None = None,
+    overlay_font: str = "Arial",
+    overlay_size: int = 36,
+    overlay_color: tuple[int, int, int] = (255, 255, 255),
     progress_callback: Callable[[float], None] | None = None,
 ) -> str:
     """Render an AMV and return the output file path."""
@@ -145,7 +149,9 @@ def render_video(
                                 raindrops, _vis_colors, lightning_intensity, beat_frames,
                                 hearts_list, heart_color,
                                 track_backgrounds, track_durations_list,
-                                bar_colors=bar_colors, bar_sweep_speed=bar_sweep_speed)
+                                bar_colors=bar_colors, bar_sweep_speed=bar_sweep_speed,
+                                overlay_text=overlay_text, overlay_font=overlay_font,
+                                overlay_size=overlay_size, overlay_color=overlay_color)
 
     clip = VideoClip(make_frame, duration=dur).with_fps(FPS)
     audio_clip = AudioFileClip(audio_path)

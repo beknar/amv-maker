@@ -3,12 +3,15 @@ Background loading, frame composition, and the build_renderer function
 that produces the per-frame callback for MoviePy.
 """
 
+import glob
+import os
 import random
+import sys
 from pathlib import Path
 
 import cv2
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 from constants import (
     WIDTH, HEIGHT, FPS, DEFAULT_VIS_COLOR, HEART_COLOR, CROSSFADE_SECONDS,
@@ -56,6 +59,48 @@ def _is_video_file(path: str) -> bool:
     return Path(path).suffix.lower() in VIDEO_EXTENSIONS
 
 
+# ── font resolution ─────────────────────────────────────────────────────────
+
+def _resolve_font(font_name: str, size: int) -> ImageFont.FreeTypeFont:
+    """Resolve a font display name to a PIL ImageFont, cross-platform."""
+    name_lower = font_name.lower().replace(" ", "")
+    # map display names to filename stems
+    name_to_file = {
+        "arial": "arial", "arialbold": "arialbd",
+        "timesnewroman": "times", "timesnewromanbold": "timesbd",
+        "comicsansms": "comic", "comicsansmsbold": "comicbd",
+        "impact": "impact",
+        "georgia": "georgia", "georgiabold": "georgiab",
+        "verdana": "verdana", "verdanabold": "verdanab",
+        "calibri": "calibri", "calibribold": "calibrib",
+        "consolas": "consola", "consolasbold": "consolab",
+        "segoeui": "segoeui", "segoeuibold": "segoeuib",
+        "tahoma": "tahoma", "tahomabd": "tahomabd",
+    }
+    stem = name_to_file.get(name_lower, name_lower)
+
+    if sys.platform == "win32":
+        font_dir = os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts")
+    elif sys.platform == "darwin":
+        font_dir = "/Library/Fonts"
+    else:
+        font_dir = "/usr/share/fonts/truetype"
+
+    # try exact match
+    for ext in (".ttf", ".TTF"):
+        path = os.path.join(font_dir, stem + ext)
+        if os.path.exists(path):
+            return ImageFont.truetype(path, size)
+
+    # try recursive search
+    for f in glob.glob(os.path.join(font_dir, "**", stem + ".*"), recursive=True):
+        if f.lower().endswith(".ttf"):
+            return ImageFont.truetype(f, size)
+
+    # fallback to PIL default
+    return ImageFont.load_default()
+
+
 # ── background source loading ───────────────────────────────────────────────
 
 def _load_bg_source(bg_image) -> tuple[list[Image.Image], float]:
@@ -96,8 +141,17 @@ def build_renderer(bg_image, bar_data: np.ndarray,
                    track_backgrounds: list | None = None,
                    track_durations: list[float] | None = None,
                    bar_colors: list[tuple[int, int, int]] | None = None,
-                   bar_sweep_speed: float = BAR_SWEEP_SPEED):
+                   bar_sweep_speed: float = BAR_SWEEP_SPEED,
+                   overlay_text: str | None = None,
+                   overlay_font: str = "Arial",
+                   overlay_size: int = 36,
+                   overlay_color: tuple[int, int, int] = (255, 255, 255)):
     """Return a function(t) -> numpy frame for VideoClip."""
+
+    # pre-load text font if overlay text is set
+    _text_font = None
+    if overlay_text:
+        _text_font = _resolve_font(overlay_font, overlay_size)
 
     if track_backgrounds and track_durations:
         bg_segments = []
@@ -265,6 +319,18 @@ def build_renderer(bg_image, bar_data: np.ndarray,
             for h in hearts:
                 h.update(dt)
                 h.draw(draw, heart_color)
+
+        # draw text overlay in upper-right corner
+        if overlay_text and _text_font:
+            text_fill = (overlay_color[0], overlay_color[1], overlay_color[2], 220)
+            bbox = draw.textbbox((0, 0), overlay_text, font=_text_font)
+            tw = bbox[2] - bbox[0]
+            tx = WIDTH - tw - 20
+            ty = 15
+            # drop shadow
+            draw.text((tx + 2, ty + 2), overlay_text, font=_text_font,
+                      fill=(0, 0, 0, 120))
+            draw.text((tx, ty), overlay_text, font=_text_font, fill=text_fill)
 
         flash_alpha = 0
         if lightning_intensity > 0:

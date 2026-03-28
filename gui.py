@@ -24,7 +24,7 @@ class AMVMakerApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("AMV Maker")
-        self.geometry("750x1050")
+        self.geometry("750x1120")
         self.resizable(False, False)
         self.configure(bg="#1a1a2e")
 
@@ -56,6 +56,10 @@ class AMVMakerApp(tk.Tk):
         self._heart_intensity = tk.IntVar(value=0)
         self._heart_color: tuple[int, int, int] = (255, 80, 150)
         self._duration = tk.StringVar(value="")
+        self._overlay_text = tk.StringVar(value="")
+        self._overlay_font = tk.StringVar(value="Arial")
+        self._overlay_size = tk.IntVar(value=36)
+        self._overlay_color: tuple[int, int, int] = (255, 255, 255)
         self._status = tk.StringVar(value="Ready")
         self._rendering = False
         self._queue: queue.Queue = queue.Queue()
@@ -155,6 +159,34 @@ class AMVMakerApp(tk.Tk):
         ttk.Label(right, text="(blank=full)").grid(row=r, column=2, sticky=tk.W)
         r += 1
 
+        # ── text overlay ──
+        txt = ttk.LabelFrame(self, text="  Text Overlay (upper-right)  ", padding=5)
+        txt.pack(fill=tk.X, padx=10, pady=(0, 5))
+
+        txt_top = tk.Frame(txt, bg="#1a1a2e")
+        txt_top.pack(fill=tk.X)
+        ttk.Label(txt_top, text="Text:").pack(side=tk.LEFT)
+        ttk.Entry(txt_top, textvariable=self._overlay_text, width=30).pack(
+            side=tk.LEFT, padx=5)
+        self._text_color_swatch = tk.Label(
+            txt_top, bg="#ffffff", width=3, relief=tk.RAISED, cursor="hand2"
+        )
+        self._text_color_swatch.pack(side=tk.RIGHT, padx=5)
+        ttk.Label(txt_top, text="Color:").pack(side=tk.RIGHT)
+
+        txt_bot = tk.Frame(txt, bg="#1a1a2e")
+        txt_bot.pack(fill=tk.X, pady=(3, 0))
+        ttk.Label(txt_bot, text="Font:").pack(side=tk.LEFT)
+        font_names = self._get_available_fonts()
+        font_combo = ttk.Combobox(txt_bot, textvariable=self._overlay_font,
+                                  values=font_names, state="readonly", width=18)
+        font_combo.pack(side=tk.LEFT, padx=5)
+        ttk.Label(txt_bot, text="Size:").pack(side=tk.LEFT, padx=(10, 0))
+        ttk.Spinbox(txt_bot, from_=12, to=120, textvariable=self._overlay_size,
+                     width=5).pack(side=tk.LEFT, padx=5)
+
+        self._text_color_swatch.bind("<Button-1>", lambda e: self._pick_text_color())
+
         # output path — full width below
         out_frame = tk.Frame(self, bg="#1a1a2e")
         out_frame.pack(fill=tk.X, padx=10, pady=(0, 5))
@@ -240,6 +272,47 @@ class AMVMakerApp(tk.Tk):
         self._track_listbox.insert(idx + 1, text)
         self._track_listbox.selection_set(idx + 1)
 
+    @staticmethod
+    def _get_available_fonts() -> list[str]:
+        """Return a list of available font names, cross-platform."""
+        import glob
+        font_map: dict[str, str] = {}
+        # common display names mapped to filename stems
+        known = {
+            "arial": "Arial", "arialbd": "Arial Bold",
+            "times": "Times New Roman", "timesbd": "Times New Roman Bold",
+            "comic": "Comic Sans MS", "comicbd": "Comic Sans MS Bold",
+            "impact": "Impact",
+            "georgia": "Georgia", "georgiab": "Georgia Bold",
+            "verdana": "Verdana", "verdanab": "Verdana Bold",
+            "calibri": "Calibri", "calibrib": "Calibri Bold",
+            "consola": "Consolas", "consolab": "Consolas Bold",
+            "segoeui": "Segoe UI", "segoeuib": "Segoe UI Bold",
+            "tahoma": "Tahoma", "tahomabd": "Tahoma Bold",
+        }
+        import os, sys
+        if sys.platform == "win32":
+            font_dir = os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts")
+        elif sys.platform == "darwin":
+            font_dir = "/Library/Fonts"
+        else:
+            font_dir = "/usr/share/fonts/truetype"
+        for f in glob.glob(os.path.join(font_dir, "**", "*.ttf"), recursive=True):
+            stem = os.path.splitext(os.path.basename(f))[0].lower()
+            if stem in known:
+                font_map[known[stem]] = f
+        if not font_map:
+            font_map["Default"] = ""
+        return sorted(font_map.keys())
+
+    def _pick_text_color(self):
+        initial = "#%02x%02x%02x" % self._overlay_color
+        result = colorchooser.askcolor(color=initial, title="Text Color")
+        if result and result[0]:
+            rgb = tuple(int(c) for c in result[0])
+            self._overlay_color = rgb
+            self._text_color_swatch.configure(bg=result[1])
+
     def _pick_bar_color(self, idx: int):
         initial = "#%02x%02x%02x" % self._bar_colors[idx]
         result = colorchooser.askcolor(color=initial, title=f"Bar Graph Color {idx + 1}")
@@ -322,6 +395,10 @@ class AMVMakerApp(tk.Tk):
             vis_colors={vt: self._vis_colors[vt] for vt in VISUALIZER_TYPES},
             bar_colors=list(self._bar_colors),
             bar_sweep_speed=self._bar_sweep_speed.get(),
+            overlay_text=self._overlay_text.get().strip() or None,
+            overlay_font=self._overlay_font.get(),
+            overlay_size=self._overlay_size.get(),
+            overlay_color=self._overlay_color,
         )
 
         thread = threading.Thread(target=self._render_worker, args=(params,), daemon=True)
