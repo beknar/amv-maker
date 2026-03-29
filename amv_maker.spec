@@ -3,7 +3,9 @@
 
 import os
 import sys
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import (
+    collect_data_files, collect_submodules, copy_metadata,
+)
 
 block_cipher = None
 
@@ -19,11 +21,24 @@ for f in os.listdir(sf_dir):
     if f.endswith('.dll') or f.endswith('.so') or f.endswith('.dylib'):
         sf_dlls.append((os.path.join(sf_dir, f), '.'))
 
-# collect librosa data files (e.g. example audio, filter coefficients)
+# collect data files
 librosa_datas = collect_data_files('librosa')
-
-# collect soxr binary
 soxr_datas = collect_data_files('soxr')
+
+# collect package metadata for packages that call importlib.metadata at runtime
+metadata_packages = [
+    'imageio', 'imageio_ffmpeg', 'moviepy', 'proglog',
+    'librosa', 'soundfile', 'pygame', 'numpy', 'scipy',
+    'scikit-learn', 'numba', 'llvmlite', 'pillow',
+    'opencv-python', 'soxr', 'audioread', 'decorator',
+    'tqdm', 'pooch', 'lazy_loader', 'msgpack',
+]
+pkg_metadata = []
+for pkg in metadata_packages:
+    try:
+        pkg_metadata += copy_metadata(pkg)
+    except Exception:
+        pass
 
 a = Analysis(
     ['gui.py'],
@@ -31,7 +46,7 @@ a = Analysis(
     binaries=[
         (ffmpeg_bin, 'imageio_ffmpeg/binaries'),
     ] + sf_dlls,
-    datas=librosa_datas + soxr_datas,
+    datas=librosa_datas + soxr_datas + pkg_metadata,
     hiddenimports=[
         # librosa and its deep dependency tree
         'librosa', 'librosa.core', 'librosa.core.audio',
@@ -79,7 +94,7 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,  # windowed app, no console
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     icon=None,
